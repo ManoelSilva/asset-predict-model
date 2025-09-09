@@ -1,0 +1,9 @@
+requests
+scikit-learn
+pandas
+boto3
+duckdb==1.2.2
+python-dotenv
+seaborn
+matplotlib
+numpy
