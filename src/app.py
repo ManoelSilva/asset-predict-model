@@ -36,5 +36,5 @@ class AssetPredictApp(object):
 
 if __name__ == '__main__':
     app = AssetPredictApp(B3Model())
-    app.create_b3_model()
-    # app.predict(ticker='BTCI11')
+    # app.create_b3_model()
+    app.predict(ticker='BTCI11')

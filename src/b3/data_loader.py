@@ -1,3 +1,5 @@
+import logging
+
 import duckdb
 import pandas as pd
 import datetime
@@ -22,6 +24,7 @@ class B3DataLoader(object):
         Returns:
             pd.DataFrame: All data.
         """
+        logging.info("Fetching all data from b3_featured..")
         return self.conn.execute(f"SELECT * FROM {self.table_name}").fetchdf()
 
     def fetch(self, start_date=None, end_date=None, ticker=None):
