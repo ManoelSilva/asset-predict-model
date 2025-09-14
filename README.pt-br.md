@@ -31,8 +31,45 @@ Este projeto fornece ferramentas e modelos para previsão de preços de ativos, 
 - Veja `requirements.txt` para todas as dependências
 
 ## Uso
-- Modifique ou estenda os carregadores de dados e modelos conforme necessário para seus ativos.
-- Utilize os scripts e módulos fornecidos para treinamento, predição e análise.
+
+Você pode usar a aplicação pela linha de comando (CLI) tanto para treinamento quanto para predição:
+
+### Treinar o Modelo B3
+
+Treine o modelo e especifique o número de jobs paralelos (núcleos de CPU) para o treinamento:
+
+```bash
+python src/app.py train --n_jobs 8
+```
+- `train`: Executa o processo de treinamento.
+- `--n_jobs 8`: (Opcional) Número de jobs paralelos para o treinamento. O padrão é 5 se não especificado.
+
+### Predizer Usando o Modelo B3
+
+Faça predições para um ticker específico:
+
+```bash
+python src/app.py predict --ticker BTCI11
+```
+- `predict`: Executa o processo de predição.
+- `--ticker BTCI11`: (Obrigatório) O ticker que você deseja prever.
+
+### Ajuda
+
+Para ver todos os comandos e opções disponíveis:
+
+```bash
+python src/app.py --help
+```
+
+Ou para um comando específico:
+
+```bash
+python src/app.py train --help
+python src/app.py predict --help
+```
+
+---
 
 ## Licença
 MIT License

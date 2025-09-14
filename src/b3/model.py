@@ -53,12 +53,12 @@ class B3Model(object):
         features = [f for f in B3Model._FEATURE_SET if f in X.columns]
         return clf.predict(X[features])
 
-    def train_and_save(self, model_dir: str = "models"):
+    def train_and_save(self, model_dir: str = "models", n_jobs: int = 5):
         """
         Loads data, creates BUY/SELL labels, trains a RandomForestClassifier, and saves the model.
         Args:
             model_dir (str): Directory to save models.
-            features (list): List of feature column names to use. If None, use all except 'date' and non-numeric columns.
+            n_jobs (int): Number of jobs for parallelism in training.
         """
         # Load data
         df = self._loader.fetch_all()
@@ -73,7 +73,7 @@ class B3Model(object):
 
         # Train supervised model to predict BUY/SELL
         # Tune hyperparameters and get the best model
-        clf = self._tune_hyperparameters(X, y)
+        clf = self._tune_hyperparameters(X, y, n_jobs=n_jobs)
 
         # Evaluate the model
         self._evaluate_model(clf, X, y)
@@ -89,7 +89,7 @@ class B3Model(object):
         # Visualize sample actions using plotter
         B3DashboardPlotter.plot_action_samples_by_ticker(df)
 
-    def _tune_hyperparameters(self, X, y):
+    def _tune_hyperparameters(self, X, y, n_jobs: int = 5):
         """
         Tune RandomForestClassifier hyperparameters using RandomizedSearchCV.
         Returns the best estimator.
@@ -101,7 +101,7 @@ class B3Model(object):
         rf = RandomForestClassifier(random_state=self._RANDOM_STATE)
         cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=self._RANDOM_STATE)  # Fewer folds
         random_search = RandomizedSearchCV(
-            rf, param_distributions=param_dist, n_iter=4, cv=cv, scoring='f1_weighted', n_jobs=5, verbose=1,
+            rf, param_distributions=param_dist, n_iter=4, cv=cv, scoring='f1_weighted', n_jobs=n_jobs, verbose=1,
             random_state=self._RANDOM_STATE
         )
         random_search.fit(X, y)

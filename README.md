@@ -31,8 +31,43 @@ This project provides tools and models for asset price prediction, including dat
 - See `requirements.txt` for all dependencies
 
 ## Usage
-- Modify or extend the data loaders and models as needed for your assets.
-- Use the provided scripts and modules for training, prediction, and analysis.
+
+You can use the application from the command line (CLI) for both training and prediction:
+
+### Train the B3 Model
+
+Train the model and specify the number of parallel jobs (CPU cores) to use for training:
+
+```bash
+python src/app.py train --n_jobs 8
+```
+- `train`: Run the training process.
+- `--n_jobs 8`: (Optional) Number of parallel jobs for model training. Default is 5 if not specified.
+
+### Predict Using the B3 Model
+
+Make predictions for a specific ticker:
+
+```bash
+python src/app.py predict --ticker BTCI11
+```
+- `predict`: Run the prediction process.
+- `--ticker BTCI11`: (Required) The ticker symbol you want to predict for.
+
+### Help
+
+To see all available commands and options:
+
+```bash
+python src/app.py --help
+```
+
+Or for a specific command:
+
+```bash
+python src/app.py train --help
+python src/app.py predict --help
+```
 
 ## License
 MIT License
