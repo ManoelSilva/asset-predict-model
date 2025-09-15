@@ -1,4 +1,5 @@
 import logging
+import argparse
 
 logging.basicConfig(level=logging.INFO)
 
@@ -35,6 +36,22 @@ class AssetPredictApp(object):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Asset Predict Model CLI')
+    subparsers = parser.add_subparsers(dest='command', required=True)
+
+    # Train command
+    train_parser = subparsers.add_parser('train', help='Train the B3 model')
+    train_parser.add_argument('--n_jobs', type=int, default=5, help='Number of jobs for training (parallelism)')
+
+    # Predict command
+    predict_parser = subparsers.add_parser('predict', help='Predict using the B3 model')
+    predict_parser.add_argument('--ticker', type=str, required=True, help='Ticker symbol to predict')
+
+    args = parser.parse_args()
     app = AssetPredictApp(B3Model())
-    # app.create_b3_model()
-    app.predict(ticker='BTCI11')
+
+    if args.command == 'train':
+        # Pass n_jobs to the model's train_and_save method
+        app._b3_model.train_and_save(model_dir="models", n_jobs=args.n_jobs)
+    elif args.command == 'predict':
+        app.predict(ticker=args.ticker)
