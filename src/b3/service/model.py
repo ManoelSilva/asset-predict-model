@@ -9,9 +9,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 from sklearn.model_selection import StratifiedKFold, cross_val_predict, RandomizedSearchCV
 
-from b3.data_loader import B3DataLoader
+from b3.service.data_loader import B3DataLoader
 from b3.exception.model import B3ModelProcessException
-from b3.plotter import B3DashboardPlotter
+from b3.service.plotter import B3DashboardPlotter
 
 
 class B3Model(object):

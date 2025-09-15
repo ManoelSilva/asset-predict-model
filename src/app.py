@@ -1,9 +1,9 @@
-import logging
 import argparse
+import logging
 
 logging.basicConfig(level=logging.INFO)
 
-from b3.model import B3Model
+from b3.service.model import B3Model
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,13 +13,11 @@ class AssetPredictApp(object):
     def __init__(self, b3_model: B3Model) -> None:
         self._b3_model = b3_model
 
-    def create_b3_model(self):
-        # Initialize the model generator
-        # Train the model and save it (this will use all numeric features by default)
-        self._b3_model.train_and_save(model_dir="models")
+    def train(self, n_jobs: int = 5):
+        self._b3_model.train_and_save(model_dir="models", n_jobs=n_jobs)
 
     def predict(self, ticker: str):
-        self._b3_predict(ticker)
+        return self._b3_predict(ticker)
 
     def _b3_predict(self, ticker: str):
         data_loader = self._b3_model.get_loader()
@@ -30,9 +28,7 @@ class AssetPredictApp(object):
         # Predict cluster (buy/sell) for new data
         predictions = self._b3_model.predict(X_new, model_dir="models")
         logging.info("Predicted actions: {}".format(predictions))
-
-    def get_model(self):
-        return self._b3_model
+        return predictions
 
 
 if __name__ == '__main__':
@@ -52,6 +48,6 @@ if __name__ == '__main__':
 
     if args.command == 'train':
         # Pass n_jobs to the model's train_and_save method
-        app._b3_model.train_and_save(model_dir="models", n_jobs=args.n_jobs)
+        app.train(n_jobs=args.n_jobs)
     elif args.command == 'predict':
         app.predict(ticker=args.ticker)
