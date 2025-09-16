@@ -55,6 +55,15 @@ class B3DashboardPlotter:
             axes[i].legend()
         plt.xlabel('Date')
         plt.tight_layout()
+        
         if save_path:
-            plt.savefig(save_path)
-        plt.show()
+            try:
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                logging.info(f"Plot saved successfully to: {save_path}")
+            except Exception as e:
+                logging.error(f"Failed to save plot to {save_path}: {e}")
+                raise
+            finally:
+                plt.close()  # Close the figure to free memory
+        else:
+            plt.show()
