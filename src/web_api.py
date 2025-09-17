@@ -33,7 +33,7 @@ def create_flask_app():
                 asset_predict_app.train(n_jobs=n_jobs)
                 logging.info('Model training completed successfully.')
             except Exception as e:
-                logging.exception('Training error in background thread')
+                logging.exception('Training error in background thread', e)
 
         n_jobs = request.json.get('n_jobs', 5) if request.is_json else 5
         thread = threading.Thread(target=run_training, args=(n_jobs,))
