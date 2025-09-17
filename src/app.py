@@ -14,7 +14,7 @@ class AssetPredictApp(object):
         self._b3_model = b3_model
 
     def train(self, n_jobs: int = 5):
-        self._b3_model.train_and_save(model_dir="models", n_jobs=n_jobs)
+        self._b3_model.train(model_dir="models", n_jobs=n_jobs)
 
     def predict(self, ticker: str):
         return self._b3_predict(ticker)
