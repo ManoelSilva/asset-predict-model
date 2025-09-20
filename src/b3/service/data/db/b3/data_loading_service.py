@@ -1,7 +1,7 @@
 import logging
 from pandas import DataFrame
 
-from b3.service.data.data_loader import B3DataLoader
+from b3.service.data.db.b3.data_loader import B3DataLoader
 
 
 class B3DataLoadingService:

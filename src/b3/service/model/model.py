@@ -1,9 +1,9 @@
 import logging
 import pandas as pd
 
-from b3.service.data.data_loader import B3DataLoader
-from b3.service.data.data_loading_service import B3DataLoadingService
-from b3.service.data.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.data.db.b3.data_loader import B3DataLoader
+from b3.service.data.db.b3.data_loading_service import B3DataLoadingService
+from b3.service.data.db.b3.data_preprocessing_service import B3DataPreprocessingService
 from b3.service.model.model_training_service import B3ModelTrainingService
 from b3.service.model.model_evaluation_service import B3ModelEvaluationService
 from b3.service.model.model_saving_service import B3ModelSavingService

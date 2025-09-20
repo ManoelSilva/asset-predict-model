@@ -114,8 +114,8 @@ predictions = model.predict(new_data, model_dir="models")
 ### Using Individual Services
 
 ```python
-from b3.service.data.data_loading_service import B3DataLoadingService
-from b3.service.data.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.data.db.b3.data_loading_service import B3DataLoadingService
+from b3.service.data.db.b3.data_preprocessing_service import B3DataPreprocessingService
 from b3.service.model.model_training_service import B3ModelTrainingService
 
 # Load data

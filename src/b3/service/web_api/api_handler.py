@@ -4,10 +4,10 @@ from flask import request, jsonify
 import joblib
 import io
 import base64
-import threading
-import os
 from concurrent.futures import ThreadPoolExecutor
-from b3.service.data.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.data.db.b3.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.data.storage.data_storage_service import DataStorageService
+from b3.service.model.model_saving_service import B3ModelSavingService
 
 
 class B3APIHandlers:
@@ -17,12 +17,15 @@ class B3APIHandlers:
     """
 
     def __init__(self, data_loading_service, preprocessing_service, training_service,
-                 evaluation_service, saving_service):
+                 evaluation_service, saving_service, storage_service=None):
         self.data_loading_service = data_loading_service
         self.preprocessing_service = preprocessing_service
         self.training_service = training_service
         self.evaluation_service = evaluation_service
         self.saving_service = saving_service
+        # Initialize storage service and model saving service
+        self.storage_service = storage_service or DataStorageService()
+        self.model_saving_service = B3ModelSavingService(self.storage_service)
         # In-memory storage for pipeline state
         self.pipeline_state = {}
         # Thread pool for async operations
@@ -374,21 +377,20 @@ class B3APIHandlers:
                 model = self._deserialize_model(self.pipeline_state['trained_model'])
                 model_source = 'pipeline'
             else:
-                # Fallback: check if there's a model in the models folder
-                models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'models')
-                model_path = os.path.join(models_dir, 'b3_model.joblib')
-
-                if os.path.exists(model_path):
-                    try:
-                        model = joblib.load(model_path)
-                        model_source = 'file'
-                        logging.info(f"Loaded model from file: {model_path}")
-                    except Exception as e:
-                        logging.error(f"Error loading model from file {model_path}: {str(e)}")
-                        return jsonify({'status': 'error', 'message': f'Error loading model from file: {str(e)}'}), 500
-                else:
-                    return jsonify({'status': 'error',
-                                    'message': 'No trained model found in pipeline or models folder. Please train model first.'}), 400
+                # Fallback: check if there's a model in storage using the new storage system
+                try:
+                    if self.model_saving_service.model_exists():
+                        # Use relative path for loading (not the full URL)
+                        model_path = self.model_saving_service.get_model_relative_path()
+                        model = self.model_saving_service.load_model(model_path)
+                        model_source = 'storage'
+                        logging.info(f"Loaded model from storage: {model_path}")
+                    else:
+                        return jsonify({'status': 'error',
+                                        'message': 'No trained model found in pipeline or storage. Please train model first.'}), 400
+                except Exception as e:
+                    logging.error(f"Error loading model from storage: {str(e)}")
+                    return jsonify({'status': 'error', 'message': f'Error loading model from storage: {str(e)}'}), 500
 
             # Get prediction parameters from request
             data = request.get_json() or {}
@@ -401,7 +403,7 @@ class B3APIHandlers:
             # Fetch new data for the ticker using the data loader (following _b3_predict pattern)
             data_loader = self.data_loading_service.get_loader()
             new_data = data_loader.fetch(ticker=ticker)
-            
+
             if new_data.empty:
                 return jsonify({'status': 'error',
                                 'message': f'No data found for ticker: {ticker}'}), 400
@@ -422,7 +424,7 @@ class B3APIHandlers:
             # Filter to only include features that exist in both datasets
             available_features = [f for f in expected_features if f in X_new.columns]
             missing_features = set(expected_features) - set(available_features)
-            
+
             if missing_features:
                 return jsonify({
                     'status': 'error',
