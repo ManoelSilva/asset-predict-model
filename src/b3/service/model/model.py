@@ -7,6 +7,7 @@ from b3.service.data.data_preprocessing_service import B3DataPreprocessingServic
 from b3.service.model.model_training_service import B3ModelTrainingService
 from b3.service.model.model_evaluation_service import B3ModelEvaluationService
 from b3.service.model.model_saving_service import B3ModelSavingService
+from b3.service.data.storage.data_storage_service import DataStorageService
 
 
 class B3Model(object):
@@ -27,14 +28,16 @@ class B3Model(object):
         'stochastic_14'
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, storage_service: DataStorageService = None) -> None:
         self._loader = B3DataLoader()
-        # Initialize service classes
+        # Initialize storage service
+        self.storage_service = storage_service or DataStorageService()
+        # Initialize service classes with shared storage service
         self.data_loading_service = B3DataLoadingService()
         self.preprocessing_service = B3DataPreprocessingService()
         self.training_service = B3ModelTrainingService()
-        self.evaluation_service = B3ModelEvaluationService()
-        self.saving_service = B3ModelSavingService()
+        self.evaluation_service = B3ModelEvaluationService(self.storage_service)
+        self.saving_service = B3ModelSavingService(self.storage_service)
 
     def get_loader(self):
         return self._loader
@@ -54,7 +57,7 @@ class B3Model(object):
         features = [f for f in B3Model._FEATURE_SET if f in X.columns]
         return clf.predict(X[features])
 
-    def train(self, model_dir: str = "models", n_jobs: int = 5, test_size: float = 0.2, val_size: float = 0.2):
+    def train(self, model_dir: str = "models", n_jobs: int = 5, test_size: float = 0.8, val_size: float = 0.2):
         """
         Loads data, creates BUY/SELL labels, trains a RandomForestClassifier, and saves the model.
         Uses the new service classes for modular training pipeline.
