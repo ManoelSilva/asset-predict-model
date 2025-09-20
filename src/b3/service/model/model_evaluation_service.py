@@ -5,7 +5,7 @@ from pandas import DataFrame, Series
 from sklearn.metrics import classification_report
 from sklearn.base import BaseEstimator
 
-from b3.service.plotter import B3DashboardPlotter
+from b3.service.model.plotter import B3DashboardPlotter
 
 
 class B3ModelEvaluationService:

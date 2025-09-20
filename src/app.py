@@ -1,9 +1,10 @@
 import argparse
 import logging
 
+from b3.service.model.model import B3Model
+
 logging.basicConfig(level=logging.INFO)
 
-from b3.service.model import B3Model
 from dotenv import load_dotenv
 
 load_dotenv()
