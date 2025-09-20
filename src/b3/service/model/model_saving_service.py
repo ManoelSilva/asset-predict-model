@@ -57,7 +57,7 @@ class B3ModelSavingService:
 
         return saved_path
 
-    def load_model(self, model_path: str) -> RandomForestClassifier:
+    def load_model(self, model_path = 'models') -> RandomForestClassifier:
         """
         Load a saved model using the configured storage service.
         
@@ -109,3 +109,16 @@ class B3ModelSavingService:
         """
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
         return self.storage_service.get_file_url(model_path)
+
+    def get_model_relative_path(self, model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
+        """
+        Get the relative path to a model file for storage operations.
+        
+        Args:
+            model_dir: Directory where the model is located
+            model_name: Name of the model file
+            
+        Returns:
+            str: Relative path to the model file for storage operations
+        """
+        return os.path.join(model_dir, model_name).replace('\\', '/')

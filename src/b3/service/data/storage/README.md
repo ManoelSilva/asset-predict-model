@@ -116,14 +116,6 @@ The system includes comprehensive error handling:
 - **Local Storage Errors**: Handles file system permissions and disk space issues
 - **File Not Found**: Consistent error handling across storage types
 
-## Testing
-
-Run the example script to test the storage system:
-
-```bash
-python src/b3/service/example_storage_usage.py
-```
-
 This will demonstrate the storage system with your current environment configuration.
 
 ## Dependencies
