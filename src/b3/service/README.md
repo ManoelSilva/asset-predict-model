@@ -114,9 +114,9 @@ predictions = model.predict(new_data, model_dir="models")
 ### Using Individual Services
 
 ```python
-from b3.service.data_loading_service import B3DataLoadingService
-from b3.service.data_preprocessing_service import B3DataPreprocessingService
-from b3.service.model_training_service import B3ModelTrainingService
+from b3.service.data.data_loading_service import B3DataLoadingService
+from b3.service.data.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.model.model_training_service import B3ModelTrainingService
 
 # Load data
 data_service = B3DataLoadingService()
@@ -138,7 +138,7 @@ model = training_service.train_model(X_train, y_train)
 import requests
 
 # Start the API server
-# python src/b3/service/b3_training_api.py
+# python src/b3/service/b3_model_api.py
 
 # Use individual endpoints
 response = requests.post("http://localhost:5000/api/b3/load-data")
@@ -156,7 +156,7 @@ To start the Flask API server:
 
 ```bash
 cd src/b3/service
-python b3_training_api.py
+python b3_model_api.py
 ```
 
 The API will be available at `http://localhost:5000`
@@ -180,3 +180,7 @@ See `example_api_usage.py` for a complete example of how to use the API client t
 - The `B3Model` class now uses the new service classes internally
 - All original functionality is preserved but now uses the modular architecture
 - The `predict()` method now uses the `B3ModelSavingService` for loading models
+
+
+
+
