@@ -1,9 +1,10 @@
 import argparse
 import logging
 
+from b3.service.model.model import B3Model
+
 logging.basicConfig(level=logging.INFO)
 
-from b3.service.model import B3Model
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,7 +15,7 @@ class AssetPredictApp(object):
         self._b3_model = b3_model
 
     def train(self, n_jobs: int = 5):
-        self._b3_model.train_and_save(model_dir="models", n_jobs=n_jobs)
+        self._b3_model.train(model_dir="models", n_jobs=n_jobs)
 
     def predict(self, ticker: str):
         return self._b3_predict(ticker)
