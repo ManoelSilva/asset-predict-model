@@ -1,11 +1,23 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import logging
+from io import BytesIO
+
+from b3.service.data.storage.data_storage_service import DataStorageService
 
 
 class B3DashboardPlotter:
-    @staticmethod
+    def __init__(self, storage_service: DataStorageService = None):
+        """
+        Initialize the plotter with storage service.
+        
+        Args:
+            storage_service: Data storage service instance (optional, creates default if not provided)
+        """
+        self.storage_service = storage_service or DataStorageService()
+
     def plot_action_samples_by_ticker(
+            self,
             df: pd.DataFrame,
             ticker_col: str = 'ticker',
             price_col: str = 'price_momentum_5',
@@ -58,8 +70,19 @@ class B3DashboardPlotter:
         
         if save_path:
             try:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                logging.info(f"Plot saved successfully to: {save_path}")
+                # Create directory if using local storage
+                if self.storage_service.is_local_storage():
+                    import os
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                
+                # Save plot to bytes
+                plot_bytes = BytesIO()
+                plt.savefig(plot_bytes, dpi=300, bbox_inches='tight', format='png')
+                plot_bytes.seek(0)
+                
+                # Save using storage service
+                saved_path = self.storage_service.save_file(save_path, plot_bytes, 'image/png')
+                logging.info(f"Plot saved successfully to: {saved_path}")
             except Exception as e:
                 logging.error(f"Failed to save plot to {save_path}: {e}")
                 raise

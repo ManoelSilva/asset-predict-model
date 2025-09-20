@@ -6,12 +6,23 @@ from sklearn.metrics import classification_report
 from sklearn.base import BaseEstimator
 
 from b3.service.model.plotter import B3DashboardPlotter
+from b3.service.data.storage.data_storage_service import DataStorageService
 
 
 class B3ModelEvaluationService:
     """
     Service responsible for evaluating trained B3 models and generating visualizations.
     """
+
+    def __init__(self, storage_service: DataStorageService = None):
+        """
+        Initialize the evaluation service.
+        
+        Args:
+            storage_service: Data storage service instance (optional, creates default if not provided)
+        """
+        self.storage_service = storage_service or DataStorageService()
+        self.plotter = B3DashboardPlotter(storage_service)
 
     @staticmethod
     def evaluate_model(model: BaseEstimator, X: DataFrame, y: Series, set_name: str = "Dataset") -> dict:
@@ -37,26 +48,28 @@ class B3ModelEvaluationService:
 
         return report
 
-    @staticmethod
-    def generate_evaluation_visualization(df: DataFrame, save_dir: str = "b3/assets/evaluation") -> str:
+    def generate_evaluation_visualization(self, df: DataFrame, save_dir: str = "b3/assets/evaluation") -> str:
         """
-        Generate and save evaluation visualization.
+        Generate and save evaluation visualization using the configured storage service.
         
         Args:
             df: Full dataset for visualization
             save_dir: Directory to save the plot
             
         Returns:
-            str: Path to the saved plot file
+            str: Path/URL to the saved plot file
         """
         logging.info("Generating evaluation visualization...")
 
-        os.makedirs(save_dir, exist_ok=True)
+        # Create directory if using local storage
+        if self.storage_service.is_local_storage():
+            os.makedirs(save_dir, exist_ok=True)
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         plot_filename = f"action_samples_by_ticker_{timestamp}.png"
-        plot_path = os.path.join(save_dir, plot_filename)
+        plot_path = os.path.join(save_dir, plot_filename).replace('\\', '/')
 
-        B3DashboardPlotter.plot_action_samples_by_ticker(df, save_path=plot_path)
+        self.plotter.plot_action_samples_by_ticker(df, save_path=plot_path)
         logging.info(f"Evaluation visualization saved: {plot_path}")
 
         return plot_path
