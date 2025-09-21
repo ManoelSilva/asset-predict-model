@@ -7,12 +7,13 @@ This script shows how to use individual endpoints and the complete training pipe
 import requests
 import json
 import time
+from src.constants import LOCALHOST_URL, SEPARATOR_LINE
 
 
 class B3TrainingAPIClient:
     """Client for interacting with the B3 Training API."""
 
-    def __init__(self, base_url="http://localhost:5000"):
+    def __init__(self, base_url=LOCALHOST_URL):
         self.base_url = base_url
 
     def load_data(self):
@@ -75,6 +76,9 @@ class B3TrainingAPIClient:
         response = requests.post(f"{self.base_url}/api/b3_featured/clear-state")
         return response.json()
 
+    def print_separator(self):
+        print("\n" + SEPARATOR_LINE + "\n")
+
 
 def main():
     """Main function demonstrating API usage."""
@@ -102,7 +106,7 @@ def main():
     except Exception as e:
         print(f"✗ Error in complete training: {e}")
 
-    print("\n" + "=" * 50 + "\n")
+    client.print_separator()
 
     # Example 2: Step-by-step training
     print("=== Example 2: Step-by-Step Training ===")
@@ -175,7 +179,7 @@ def main():
     except Exception as e:
         print(f"✗ Error in step-by-step training: {e}")
 
-    print("\n" + "=" * 50 + "\n")
+    client.print_separator()
 
     # Example 3: Make predictions
     print("=== Example 3: Making Predictions ===")
@@ -207,7 +211,7 @@ def main():
     except Exception as e:
         print(f"✗ Error making prediction: {e}")
 
-    print("\n" + "=" * 50 + "\n")
+    client.print_separator()
 
     # Example 4: Check final status
     print("=== Example 4: Final Status ===")

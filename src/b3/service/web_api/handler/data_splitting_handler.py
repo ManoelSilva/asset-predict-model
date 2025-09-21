@@ -1,9 +1,7 @@
 from flask import request, jsonify
 import pandas as pd
 import logging
-
-_DEFAULT_VAL_SIZE = 0.2
-_DEFAULT_TEST_SIZE = 0.8
+from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE
 
 
 class DataSplittingHandler:
@@ -24,10 +22,10 @@ class DataSplittingHandler:
                     status='error',
                     error_message=resp['message']
                 )
-                return jsonify(resp), 400
+                return jsonify(resp), HTTP_STATUS_BAD_REQUEST
             data = req_data or {}
-            test_size = data.get('test_size', _DEFAULT_TEST_SIZE)
-            val_size = data.get('val_size', _DEFAULT_VAL_SIZE)
+            test_size = data.get('test_size', DEFAULT_TEST_SIZE)
+            val_size = data.get('val_size', DEFAULT_VAL_SIZE)
             x = pd.DataFrame(self.pipeline_state['X_features'])
             y = pd.Series(self.pipeline_state['y_targets'])
             x_train, x_val, x_test, y_train, y_val, y_test = self.training_service.split_data(
@@ -63,4 +61,4 @@ class DataSplittingHandler:
                 status='error',
                 error_message=str(e)
             )
-            return jsonify(resp), 500
+            return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR

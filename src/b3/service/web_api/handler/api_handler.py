@@ -9,6 +9,7 @@ from .data_loading_handler import DataLoadingHandler
 from .data_preprocessing_handler import DataPreprocessingHandler
 from .data_splitting_handler import DataSplittingHandler
 from .model_evaluation_handler import ModelEvaluationHandler
+from .model_predict_handler import ModelPredictHandler
 from .model_saving_handler import ModelSavingHandler
 from .model_training_handler import ModelTrainingHandler
 from .model_complete_training_handler import CompleteTrainingHandler
@@ -76,9 +77,11 @@ def create_b3_api_handlers(data_loading_service, preprocessing_service, training
                                                    deserialize_model),
         'model_saving': ModelSavingHandler(model_saving_service, pipeline_state, log_api_activity, deserialize_model),
         'pipeline_status': PipelineStatusHandler(pipeline_state, log_api_activity),
-        'pipeline_orchestrator': CompleteTrainingHandler(
+        'complete_training': CompleteTrainingHandler(
             data_loading_service, preprocessing_service, training_service, evaluation_service, saving_service,
             pipeline_state, log_api_activity, serialize_model
-        )
+        ),
+        'predict': ModelPredictHandler(log_api_activity, data_loading_service, preprocessing_service,
+                                       model_saving_service, pipeline_state, deserialize_model)
     }
     return handlers

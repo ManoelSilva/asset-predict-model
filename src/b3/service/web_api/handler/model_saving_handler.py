@@ -1,5 +1,6 @@
 from flask import request, jsonify
 import logging
+from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR, MODEL_STORAGE_KEY
 
 
 class ModelSavingHandler:
@@ -12,7 +13,7 @@ class ModelSavingHandler:
     def save_model_handler(self):
         req_data = request.get_json() if request.is_json else None
         try:
-            if 'trained_model' not in self.pipeline_state:
+            if MODEL_STORAGE_KEY not in self.pipeline_state:
                 resp = {'status': 'error', 'message': 'No trained model found. Please train model first.'}
                 self._log_api_activity(
                     endpoint='save_model_handler',
@@ -21,11 +22,11 @@ class ModelSavingHandler:
                     status='error',
                     error_message=resp['message']
                 )
-                return jsonify(resp), 400
+                return jsonify(resp), HTTP_STATUS_BAD_REQUEST
             data = req_data or {}
             model_dir = data.get('model_dir', 'models')
             model_name = data.get('model_name', 'b3_model.joblib')
-            model = self._deserialize_model(self.pipeline_state['trained_model'])
+            model = self._deserialize_model(self.pipeline_state[MODEL_STORAGE_KEY])
             model_path = self.saving_service.save_model(model, model_dir, model_name)
             resp = {
                 'status': 'success',
@@ -49,4 +50,4 @@ class ModelSavingHandler:
                 status='error',
                 error_message=str(e)
             )
-            return jsonify(resp), 500
+            return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR

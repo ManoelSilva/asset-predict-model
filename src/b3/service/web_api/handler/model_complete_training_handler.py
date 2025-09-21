@@ -2,6 +2,8 @@ import logging
 
 from flask import request, jsonify
 from concurrent.futures import ThreadPoolExecutor
+from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE, DEFAULT_N_JOBS, \
+    MODEL_STORAGE_KEY
 
 
 class CompleteTrainingHandler:
@@ -22,9 +24,9 @@ class CompleteTrainingHandler:
         try:
             data = req_data or {}
             model_dir = data.get('model_dir', 'models')
-            n_jobs = data.get('n_jobs', 5)
-            test_size = data.get('test_size', 0.8)
-            val_size = data.get('val_size', 0.2)
+            n_jobs = data.get('n_jobs', DEFAULT_N_JOBS)
+            test_size = data.get('test_size', DEFAULT_TEST_SIZE)
+            val_size = data.get('val_size', DEFAULT_VAL_SIZE)
             future = self.executor.submit(self._run_complete_training_pipeline, model_dir, n_jobs, test_size, val_size)
             self.pipeline_state['training_future'] = future
             self.pipeline_state['training_status'] = 'running'
@@ -50,7 +52,7 @@ class CompleteTrainingHandler:
                 status='error',
                 error_message=str(e)
             )
-            return jsonify(resp), 500
+            return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR
 
     def _run_complete_training_pipeline(self, model_dir, n_jobs, test_size, val_size):
         try:
@@ -72,7 +74,7 @@ class CompleteTrainingHandler:
             self.pipeline_state['y_test'] = y_test.to_dict()
             model = self.training_service.train_model(x_train, y_train, n_jobs)
             model_b64 = self._serialize_model(model)
-            self.pipeline_state['trained_model'] = model_b64
+            self.pipeline_state[MODEL_STORAGE_KEY] = model_b64
             results = self.evaluation_service.evaluate_model_comprehensive(
                 model, x_val, y_val, x_test, y_test, df_processed
             )

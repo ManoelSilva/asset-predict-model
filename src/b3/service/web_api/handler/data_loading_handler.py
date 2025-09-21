@@ -1,5 +1,6 @@
 from flask import request, jsonify
 import logging
+from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR
 
 
 class DataLoadingHandler:
@@ -37,4 +38,4 @@ class DataLoadingHandler:
                 status='error',
                 error_message=str(e)
             )
-            return jsonify(resp), 500
+            return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR

@@ -1,6 +1,7 @@
 from flask import request, jsonify
 import pandas as pd
 import logging
+from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR, MODEL_STORAGE_KEY
 
 
 class ModelEvaluationHandler:
@@ -13,7 +14,7 @@ class ModelEvaluationHandler:
     def evaluate_model_handler(self):
         req_data = request.get_json() if request.is_json else None
         try:
-            if 'trained_model' not in self.pipeline_state:
+            if MODEL_STORAGE_KEY not in self.pipeline_state:
                 resp = {'status': 'error', 'message': 'No trained model found. Please train model first.'}
                 self._log_api_activity(
                     endpoint='evaluate_model_handler',
@@ -22,8 +23,8 @@ class ModelEvaluationHandler:
                     status='error',
                     error_message=resp['message']
                 )
-                return jsonify(resp), 400
-            model = self._deserialize_model(self.pipeline_state['trained_model'])
+                return jsonify(resp), HTTP_STATUS_BAD_REQUEST
+            model = self._deserialize_model(self.pipeline_state[MODEL_STORAGE_KEY])
             x_val = pd.DataFrame(self.pipeline_state['X_val'])
             y_val = pd.Series(self.pipeline_state['y_val'])
             x_test = pd.DataFrame(self.pipeline_state['X_test'])
@@ -54,4 +55,4 @@ class ModelEvaluationHandler:
                 status='error',
                 error_message=str(e)
             )
-            return jsonify(resp), 500
+            return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR

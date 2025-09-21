@@ -1,6 +1,7 @@
 from flask import request, jsonify
 import pandas as pd
 import logging
+from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR
 
 
 class DataPreprocessingHandler:
@@ -21,7 +22,7 @@ class DataPreprocessingHandler:
                     status='error',
                     error_message=resp['message']
                 )
-                return jsonify(resp), 400
+                return jsonify(resp), HTTP_STATUS_BAD_REQUEST
             df = pd.DataFrame(self.pipeline_state['raw_data'])
             X, df_processed, y = self.preprocessing_service.preprocess_data(df)
             self.pipeline_state['X_features'] = X.to_dict('records')
@@ -52,4 +53,4 @@ class DataPreprocessingHandler:
                 status='error',
                 error_message=str(e)
             )
-            return jsonify(resp), 500
+            return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR
