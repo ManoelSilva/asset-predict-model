@@ -30,23 +30,25 @@ class B3APIHandlers:
         self.model_saving_service = B3ModelSavingService(self.storage_service)
         # In-memory storage for pipeline state
         self.pipeline_state = {}
-        # Thread pool for async operations
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        # Thread pool for async operations (used for logging and background tasks)
+        self.executor = ThreadPoolExecutor(max_workers=4)
         # Add training_data_loader for persistent API logging
         self.request_data_loader = request_data_loader or TrainingRequestDataLoader()
 
     def _log_api_activity(self, endpoint, request_data, response_data, status, error_message=None):
-        """Encapsulate API activity logging."""
-        if self.request_data_loader:
-            log_kwargs = {
-                'endpoint': endpoint,
-                'request_data': request_data,
-                'response_data': response_data,
-                'status': status
-            }
-            if error_message is not None:
-                log_kwargs['error_message'] = error_message
-            self.request_data_loader.log_api_activity(**log_kwargs)
+        """Encapsulate API activity logging in a thread pool executor."""
+        def log_task():
+            if self.request_data_loader:
+                log_kwargs = {
+                    'endpoint': endpoint,
+                    'request_data': request_data,
+                    'response_data': response_data,
+                    'status': status
+                }
+                if error_message is not None:
+                    log_kwargs['error_message'] = error_message
+                self.request_data_loader.log_api_activity(**log_kwargs)
+        self.executor.submit(log_task)
 
     def load_data_handler(self):
         """Load B3 market data."""
