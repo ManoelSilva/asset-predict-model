@@ -1,8 +1,9 @@
 import logging
 import os
+from io import BytesIO
+
 import joblib
 from sklearn.ensemble import RandomForestClassifier
-from io import BytesIO
 
 from b3.service.data.storage.data_storage_service import DataStorageService
 
@@ -41,7 +42,7 @@ class B3ModelSavingService:
 
         # Create model path
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
-        
+
         # Create directory if using local storage
         if self.storage_service.is_local_storage():
             self.storage_service.create_directory(model_dir)
@@ -57,7 +58,7 @@ class B3ModelSavingService:
 
         return saved_path
 
-    def load_model(self, model_path = 'models') -> RandomForestClassifier:
+    def load_model(self, model_path='models') -> RandomForestClassifier:
         """
         Load a saved model using the configured storage service.
         
@@ -74,7 +75,7 @@ class B3ModelSavingService:
 
         # Load model data from storage
         model_data = self.storage_service.load_file(model_path)
-        
+
         # Load model from bytes
         model_bytes = BytesIO(model_data)
         model = joblib.load(model_bytes)
@@ -110,14 +111,15 @@ class B3ModelSavingService:
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
         return self.storage_service.get_file_url(model_path)
 
-    def get_model_relative_path(self, model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
+    @staticmethod
+    def get_model_relative_path(model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
         """
         Get the relative path to a model file for storage operations.
-        
+
         Args:
             model_dir: Directory where the model is located
             model_name: Name of the model file
-            
+
         Returns:
             str: Relative path to the model file for storage operations
         """

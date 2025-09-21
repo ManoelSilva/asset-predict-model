@@ -43,8 +43,8 @@ class B3ModelEvaluationService:
         unique_id = str(uuid.uuid4())[:8]
         return f"{model_name}_{dataset_type}_{timestamp}_{unique_id}"
 
-    def evaluate_model(self, model: BaseEstimator, X: DataFrame, y: Series, set_name: str = "Dataset", 
-                      model_name: str = "b3_model", persist_results: bool = True) -> dict:
+    def evaluate_model(self, model: BaseEstimator, X: DataFrame, y: Series, set_name: str = "Dataset",
+                       model_name: str = "b3_model", persist_results: bool = True) -> dict:
         """
         Evaluate the classifier and return classification metrics.
         
@@ -72,10 +72,10 @@ class B3ModelEvaluationService:
             try:
                 # Determine dataset type for database storage
                 dataset_type = set_name.lower() if set_name.lower() in ['validation', 'test'] else 'validation'
-                
+
                 # Generate unique evaluation ID
                 evaluation_id = self._generate_evaluation_id(model_name, dataset_type)
-                
+
                 # Save evaluation results
                 success = self.evaluation_data_loader.save_evaluation(
                     evaluation_id=evaluation_id,
@@ -83,19 +83,19 @@ class B3ModelEvaluationService:
                     dataset_type=dataset_type,
                     evaluation_results=report
                 )
-                
+
                 if success:
                     logging.info(f"Evaluation results saved to database with ID: {evaluation_id}")
                     report['evaluation_id'] = evaluation_id
                 else:
-                    logging.warning(f"Failed to save evaluation results to database")
-                    
+                    logging.warning('Failed to save evaluation results to database')
+
             except Exception as e:
                 logging.error(f"Error persisting evaluation results: {str(e)}")
 
         return report
 
-    def generate_evaluation_visualization(self, df: DataFrame, save_dir: str = "b3_featured/assets/evaluation") -> str:
+    def generate_evaluation_visualization(self, df: DataFrame, save_dir: str = "b3/assets/evaluation") -> str:
         """
         Generate and save evaluation visualization using the configured storage service.
         
@@ -111,7 +111,7 @@ class B3ModelEvaluationService:
         # Create directory if using local storage
         if self.storage_service.is_local_storage():
             os.makedirs(save_dir, exist_ok=True)
-        
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         plot_filename = f"action_samples_by_ticker_{timestamp}.png"
         plot_path = os.path.join(save_dir, plot_filename).replace('\\', '/')
@@ -122,7 +122,7 @@ class B3ModelEvaluationService:
         return plot_path
 
     def evaluate_model_comprehensive(self, model: BaseEstimator, X_val: DataFrame, y_val: Series,
-                                     X_test: DataFrame, y_test: Series, df: DataFrame, 
+                                     X_test: DataFrame, y_test: Series, df: DataFrame,
                                      model_name: str = "b3_model", persist_results: bool = True) -> dict:
         """
         Perform comprehensive model evaluation on validation and test sets.
@@ -142,17 +142,17 @@ class B3ModelEvaluationService:
         """
         # Generate visualization first
         visualization_path = self.generate_evaluation_visualization(df)
-        
+
         # Evaluate validation set
         validation_results = self.evaluate_model(
             model, X_val, y_val, "Validation", model_name, persist_results
         )
-        
+
         # Evaluate test set
         test_results = self.evaluate_model(
             model, X_test, y_test, "Test", model_name, persist_results
         )
-        
+
         # If persisting results, update the database records with visualization path
         if persist_results:
             try:
@@ -162,15 +162,15 @@ class B3ModelEvaluationService:
                     # Note: We would need to add an update method to EvaluationDataLoader
                     # For now, we'll log this information
                     logging.info(f"Validation evaluation ID: {val_evaluation_id}, Visualization: {visualization_path}")
-                
+
                 # Update test record with visualization path
                 if 'evaluation_id' in test_results:
                     test_evaluation_id = test_results['evaluation_id']
                     logging.info(f"Test evaluation ID: {test_evaluation_id}, Visualization: {visualization_path}")
-                    
+
             except Exception as e:
                 logging.error(f"Error updating evaluation records with visualization path: {str(e)}")
-        
+
         return {
             'validation': validation_results,
             'test': test_results,
