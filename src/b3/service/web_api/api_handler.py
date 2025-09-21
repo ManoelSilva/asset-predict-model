@@ -5,7 +5,7 @@ import joblib
 import io
 import base64
 from concurrent.futures import ThreadPoolExecutor
-from b3.service.data.db.b3.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.data.storage.data_storage_service import DataStorageService
 from b3.service.model.model_saving_service import B3ModelSavingService
 
@@ -417,7 +417,7 @@ class B3APIHandlers:
                 expected_features = list(pd.DataFrame(self.pipeline_state['X_features']).columns)
             else:
                 # Fallback: use the predefined feature set from preprocessing service
-                preprocessing_service = B3DataPreprocessingService()
+                preprocessing_service = B3ModelPreprocessingService()
                 expected_features = preprocessing_service._FEATURE_SET
                 logging.info(f"Using fallback feature set for file-based model: {expected_features}")
 

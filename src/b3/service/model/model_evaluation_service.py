@@ -95,7 +95,7 @@ class B3ModelEvaluationService:
 
         return report
 
-    def generate_evaluation_visualization(self, df: DataFrame, save_dir: str = "b3/assets/evaluation") -> str:
+    def generate_evaluation_visualization(self, df: DataFrame, save_dir: str = "b3_featured/assets/evaluation") -> str:
         """
         Generate and save evaluation visualization using the configured storage service.
         

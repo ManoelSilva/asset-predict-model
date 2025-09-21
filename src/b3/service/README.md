@@ -114,8 +114,8 @@ predictions = model.predict(new_data, model_dir="models")
 ### Using Individual Services
 
 ```python
-from b3.service.data.db.b3.data_loading_service import B3DataLoadingService
-from b3.service.data.db.b3.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
+from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.model.model_training_service import B3ModelTrainingService
 
 # Load data
@@ -123,7 +123,7 @@ data_service = B3DataLoadingService()
 df = data_service.load_data()
 
 # Preprocess data
-preprocessing_service = B3DataPreprocessingService()
+preprocessing_service = B3ModelPreprocessingService()
 X, df_processed, y = preprocessing_service.preprocess_data(df)
 
 # Train model
@@ -138,7 +138,7 @@ model = training_service.train_model(X_train, y_train)
 import requests
 
 # Start the API server
-# python src/b3/service/b3_model_api.py
+# python src/b3_featured/service/b3_model_api.py
 
 # Use individual endpoints
 response = requests.post("http://localhost:5000/api/b3/load-data")
@@ -155,7 +155,7 @@ response = requests.post("http://localhost:5000/api/b3/train-complete",
 To start the Flask API server:
 
 ```bash
-cd src/b3/service
+cd src/b3_featured/service
 python b3_model_api.py
 ```
 

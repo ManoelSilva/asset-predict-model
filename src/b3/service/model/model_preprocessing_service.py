@@ -5,7 +5,7 @@ from pandas import DataFrame, Series
 from b3.exception.model import B3ModelProcessException
 
 
-class B3DataPreprocessingService:
+class B3ModelPreprocessingService:
     """
     Service responsible for preprocessing B3 market data including feature validation,
     data cleaning, and target label generation.

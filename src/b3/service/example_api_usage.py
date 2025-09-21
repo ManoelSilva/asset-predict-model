@@ -17,41 +17,41 @@ class B3TrainingAPIClient:
 
     def load_data(self):
         """Load B3 market data."""
-        response = requests.post(f"{self.base_url}/api/b3/load-data")
+        response = requests.post(f"{self.base_url}/api/b3_featured/load-data")
         return response.json()
 
     def preprocess_data(self):
         """Preprocess loaded data."""
-        response = requests.post(f"{self.base_url}/api/b3/preprocess-data")
+        response = requests.post(f"{self.base_url}/api/b3_featured/preprocess-data")
         return response.json()
 
     def split_data(self, test_size=0.2, val_size=0.2):
         """Split preprocessed data."""
         data = {"test_size": test_size, "val_size": val_size}
-        response = requests.post(f"{self.base_url}/api/b3/split-data", json=data)
+        response = requests.post(f"{self.base_url}/api/b3_featured/split-data", json=data)
         return response.json()
 
     def train_model(self, n_jobs=5):
         """Train the model."""
         data = {"n_jobs": n_jobs}
-        response = requests.post(f"{self.base_url}/api/b3/train-model", json=data)
+        response = requests.post(f"{self.base_url}/api/b3_featured/train-model", json=data)
         return response.json()
 
     def evaluate_model(self):
         """Evaluate the trained model."""
-        response = requests.post(f"{self.base_url}/api/b3/evaluate-model")
+        response = requests.post(f"{self.base_url}/api/b3_featured/evaluate-model")
         return response.json()
 
     def save_model(self, model_dir="models", model_name="b3_model.joblib"):
         """Save the trained model."""
         data = {"model_dir": model_dir, "model_name": model_name}
-        response = requests.post(f"{self.base_url}/api/b3/save-model", json=data)
+        response = requests.post(f"{self.base_url}/api/b3_featured/save-model", json=data)
         return response.json()
 
     def predict(self, ticker):
         """Make predictions using the trained model for a specific ticker."""
         data = {"ticker": ticker}
-        response = requests.post(f"{self.base_url}/api/b3/predict", json=data)
+        response = requests.post(f"{self.base_url}/api/b3_featured/predict", json=data)
         return response.json()
 
     def train_complete(self, model_dir="models", n_jobs=5, test_size=0.2, val_size=0.8):
@@ -62,17 +62,17 @@ class B3TrainingAPIClient:
             "test_size": test_size,
             "val_size": val_size
         }
-        response = requests.post(f"{self.base_url}/api/b3/train-complete", json=data)
+        response = requests.post(f"{self.base_url}/api/b3_featured/train-complete", json=data)
         return response.json()
 
     def get_status(self):
         """Get current pipeline status."""
-        response = requests.get(f"{self.base_url}/api/b3/status")
+        response = requests.get(f"{self.base_url}/api/b3_featured/status")
         return response.json()
 
     def clear_state(self):
         """Clear the pipeline state."""
-        response = requests.post(f"{self.base_url}/api/b3/clear-state")
+        response = requests.post(f"{self.base_url}/api/b3_featured/clear-state")
         return response.json()
 
 
@@ -89,7 +89,7 @@ def main():
         print(f"Status: {json.dumps(status, indent=2)}\n")
     except requests.exceptions.ConnectionError:
         print("✗ API is not running. Please start the API first:")
-        print("python src/b3/service/b3_model_api.py")
+        print("python src/b3_featured/service/b3_model_api.py")
         return
 
     # Example 1: Complete training pipeline

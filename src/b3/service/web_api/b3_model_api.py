@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 from flask import Flask
 from flask_cors import CORS
 
-from b3.service.data.db.b3.data_loading_service import B3DataLoadingService
-from b3.service.data.db.b3.data_preprocessing_service import B3DataPreprocessingService
+from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
+from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.model.model_evaluation_service import B3ModelEvaluationService
 from b3.service.model.model_saving_service import B3ModelSavingService
 from b3.service.model.model_training_service import B3ModelTrainingService
@@ -25,7 +25,7 @@ class B3TrainingAPI:
 
         # Initialize services
         self.data_loading_service = B3DataLoadingService()
-        self.preprocessing_service = B3DataPreprocessingService()
+        self.preprocessing_service = B3ModelPreprocessingService()
         self.training_service = B3ModelTrainingService()
         self.evaluation_service = B3ModelEvaluationService()
         self.saving_service = B3ModelSavingService()
