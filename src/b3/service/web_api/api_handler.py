@@ -1,15 +1,20 @@
-import logging
-import pandas as pd
-from flask import request, jsonify
-import joblib
-import io
 import base64
+import io
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
+import joblib
+import pandas as pd
+from flask import request, jsonify
+
 from b3.service.data.db.training.data_loader import TrainingRequestDataLoader
-from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.data.storage.data_storage_service import DataStorageService
+from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.model.model_saving_service import B3ModelSavingService
+
+_DEFAULT_VAL_SIZE = 0.2
+
+_DEFAULT_TEST_SIZE = 0.8
 
 
 class B3APIHandlers:
@@ -37,6 +42,7 @@ class B3APIHandlers:
 
     def _log_api_activity(self, endpoint, request_data, response_data, status, error_message=None):
         """Encapsulate API activity logging in a thread pool executor."""
+
         def log_task():
             if self.request_data_loader:
                 log_kwargs = {
@@ -48,6 +54,7 @@ class B3APIHandlers:
                 if error_message is not None:
                     log_kwargs['error_message'] = error_message
                 self.request_data_loader.log_api_activity(**log_kwargs)
+
         self.executor.submit(log_task)
 
     def load_data_handler(self):
@@ -153,32 +160,27 @@ class B3APIHandlers:
 
             # Get parameters from request
             data = req_data or {}
-            test_size = data.get('test_size', 0.2)
-            val_size = data.get('val_size', 0.2)
+            test_size = data.get('test_size', _DEFAULT_TEST_SIZE)
+            val_size = data.get('val_size', _DEFAULT_VAL_SIZE)
 
             # Reconstruct DataFrames
-            X = pd.DataFrame(self.pipeline_state['X_features'])
+            x = pd.DataFrame(self.pipeline_state['X_features'])
             y = pd.Series(self.pipeline_state['y_targets'])
 
             # Split data
-            X_train, X_val, X_test, y_train, y_val, y_test = self.training_service.split_data(
-                X, y, test_size, val_size
+            x_train, x_val, x_test, y_train, y_val, y_test = self.training_service.split_data(
+                x, y, test_size, val_size
             )
 
             # Store split data
-            self.pipeline_state['X_train'] = X_train.to_dict('records')
-            self.pipeline_state['X_val'] = X_val.to_dict('records')
-            self.pipeline_state['X_test'] = X_test.to_dict('records')
-            self.pipeline_state['y_train'] = y_train.to_dict()
-            self.pipeline_state['y_val'] = y_val.to_dict()
-            self.pipeline_state['y_test'] = y_test.to_dict()
+            self._store_split_data(x_train, x_val, x_test, y_train, y_val, y_test)
 
             resp = {
                 'status': 'success',
                 'message': 'Data split successfully',
-                'train_size': len(X_train),
-                'validation_size': len(X_val),
-                'test_size': len(X_test)
+                'train_size': len(x_train),
+                'validation_size': len(x_val),
+                'test_size': len(x_test)
             }
             self._log_api_activity(
                 endpoint='split_data_handler',
@@ -219,11 +221,11 @@ class B3APIHandlers:
             n_jobs = data.get('n_jobs', 5)
 
             # Reconstruct DataFrames
-            X_train = pd.DataFrame(self.pipeline_state['X_train'])
+            x_train = pd.DataFrame(self.pipeline_state['X_train'])
             y_train = pd.Series(self.pipeline_state['y_train'])
 
             # Train model
-            model = self.training_service.train_model(X_train, y_train, n_jobs)
+            model = self.training_service.train_model(x_train, y_train, n_jobs)
 
             # Store trained model (serialize for storage)
             model_b64 = self._serialize_model(model)
@@ -273,15 +275,15 @@ class B3APIHandlers:
             model = self._deserialize_model(self.pipeline_state['trained_model'])
 
             # Reconstruct validation and test data
-            X_val = pd.DataFrame(self.pipeline_state['X_val'])
+            x_val = pd.DataFrame(self.pipeline_state['X_val'])
             y_val = pd.Series(self.pipeline_state['y_val'])
-            X_test = pd.DataFrame(self.pipeline_state['X_test'])
+            x_test = pd.DataFrame(self.pipeline_state['X_test'])
             y_test = pd.Series(self.pipeline_state['y_test'])
             df_processed = pd.DataFrame(self.pipeline_state['processed_data'])
 
             # Evaluate model
             results = self.evaluation_service.evaluate_model_comprehensive(
-                model, X_val, y_val, X_test, y_test, df_processed
+                model, x_val, y_val, x_test, y_test, df_processed
             )
 
             resp = {
@@ -366,8 +368,8 @@ class B3APIHandlers:
             data = req_data or {}
             model_dir = data.get('model_dir', 'models')
             n_jobs = data.get('n_jobs', 5)
-            test_size = data.get('test_size', 0.2)
-            val_size = data.get('val_size', 0.2)
+            test_size = data.get('test_size', _DEFAULT_TEST_SIZE)
+            val_size = data.get('val_size', _DEFAULT_VAL_SIZE)
 
             # Submit the training task to thread pool
             future = self.executor.submit(self._run_complete_training_pipeline,
@@ -410,30 +412,25 @@ class B3APIHandlers:
             self.pipeline_state['data_shape'] = df.shape
 
             # Step 2: Preprocess data
-            X, df_processed, y = self.preprocessing_service.preprocess_data(df)
-            self.pipeline_state['X_features'] = X.to_dict('records')
+            x, df_processed, y = self.preprocessing_service.preprocess_data(df)
+            self.pipeline_state['X_features'] = x.to_dict('records')
             self.pipeline_state['y_targets'] = y.to_dict()
             self.pipeline_state['processed_data'] = df_processed.to_dict('records')
 
             # Step 3: Split data
-            X_train, X_val, X_test, y_train, y_val, y_test = self.training_service.split_data(
-                X, y, test_size, val_size
+            x_train, x_val, x_test, y_train, y_val, y_test = self.training_service.split_data(
+                x, y, test_size, val_size
             )
-            self.pipeline_state['X_train'] = X_train.to_dict('records')
-            self.pipeline_state['X_val'] = X_val.to_dict('records')
-            self.pipeline_state['X_test'] = X_test.to_dict('records')
-            self.pipeline_state['y_train'] = y_train.to_dict()
-            self.pipeline_state['y_val'] = y_val.to_dict()
-            self.pipeline_state['y_test'] = y_test.to_dict()
+            self._store_split_data(x_train, x_val, x_test, y_train, y_val, y_test)
 
             # Step 4: Train model
-            model = self.training_service.train_model(X_train, y_train, n_jobs)
+            model = self.training_service.train_model(x_train, y_train, n_jobs)
             model_b64 = self._serialize_model(model)
             self.pipeline_state['trained_model'] = model_b64
 
             # Step 5: Evaluate model
             results = self.evaluation_service.evaluate_model_comprehensive(
-                model, X_val, y_val, X_test, y_test, df_processed
+                model, x_val, y_val, x_test, y_test, df_processed
             )
 
             # Step 6: Save model
@@ -446,9 +443,9 @@ class B3APIHandlers:
                 'evaluation_results': results,
                 'data_info': {
                     'total_samples': len(df),
-                    'train_samples': len(X_train),
-                    'validation_samples': len(X_val),
-                    'test_samples': len(X_test)
+                    'train_samples': len(x_train),
+                    'validation_samples': len(x_val),
+                    'test_samples': len(x_test)
                 }
             }
 
@@ -592,170 +589,6 @@ class B3APIHandlers:
             )
             return jsonify(resp), 500
 
-    def predict_data_handler(self):
-        """Make predictions using the trained model."""
-        req_data = request.get_json() if request.is_json else None
-        try:
-            model = None
-            model_source = None
-
-            # Check if there's a trained model in the pipeline state
-            if 'trained_model' in self.pipeline_state:
-                model = self._deserialize_model(self.pipeline_state['trained_model'])
-                model_source = 'pipeline'
-            else:
-                # Fallback: check if there's a model in storage using the new storage system
-                try:
-                    if self.model_saving_service.model_exists():
-                        # Use relative path for loading (not the full URL)
-                        model_path = self.model_saving_service.get_model_relative_path()
-                        model = self.model_saving_service.load_model(model_path)
-                        model_source = 'storage'
-                        logging.info(f"Loaded model from storage: {model_path}")
-                    else:
-                        resp = {'status': 'error',
-                                'message': 'No trained model found in pipeline or storage. Please train model first.'}
-                        if self.request_data_loader:
-                            self.request_data_loader.log_api_activity(
-                                endpoint='predict_data_handler',
-                                request_data=req_data,
-                                response_data=resp,
-                                status='error',
-                                error_message=resp['message']
-                            )
-                        return jsonify(resp), 400
-                except Exception as e:
-                    logging.error(f"Error loading model from storage: {str(e)}")
-                    resp = {'status': 'error', 'message': f'Error loading model from storage: {str(e)}'}
-                    if self.request_data_loader:
-                        self.request_data_loader.log_api_activity(
-                            endpoint='predict_data_handler',
-                            request_data=req_data,
-                            response_data=resp,
-                            status='error',
-                            error_message=str(e)
-                        )
-                    return jsonify(resp), 500
-
-            # Get prediction parameters from request
-            data = req_data or {}
-            ticker = data.get('ticker')
-
-            if not ticker:
-                resp = {'status': 'error',
-                        'message': 'No ticker provided. Please include "ticker" field in request.'}
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='predict_data_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
-                return jsonify(resp), 400
-
-            # Fetch new data for the ticker using the data loader (following _b3_predict pattern)
-            data_loader = self.data_loading_service.get_loader()
-            new_data = data_loader.fetch(ticker=ticker)
-
-            if new_data.empty:
-                resp = {'status': 'error',
-                        'message': f'No data found for ticker: {ticker}'}
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='predict_data_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
-                return jsonify(resp), 400
-
-            # Extract numeric features (excluding 'date') - following _b3_predict pattern
-            features = [col for col in new_data.select_dtypes(include=['number']).columns if col != 'date']
-            X_new = new_data[features]
-
-            # Get expected features - either from pipeline state or fallback to predefined feature set
-            if 'X_features' in self.pipeline_state:
-                expected_features = list(pd.DataFrame(self.pipeline_state['X_features']).columns)
-            else:
-                # Fallback: use the predefined feature set from preprocessing service
-                preprocessing_service = B3ModelPreprocessingService()
-                expected_features = preprocessing_service._FEATURE_SET
-                logging.info(f"Using fallback feature set for file-based model: {expected_features}")
-
-            # Filter to only include features that exist in both datasets
-            available_features = [f for f in expected_features if f in X_new.columns]
-            missing_features = set(expected_features) - set(available_features)
-
-            if missing_features:
-                resp = {
-                    'status': 'error',
-                    'message': f'Missing required features in data for ticker {ticker}: {list(missing_features)}',
-                    'required_features': expected_features,
-                    'available_features': list(X_new.columns)
-                }
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='predict_data_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
-                return jsonify(resp), 400
-
-            # Use only the available features for prediction
-            X_prediction = X_new[available_features]
-
-            # Make predictions
-            predictions = model.predict(X_prediction)
-
-            # Get prediction probabilities if available
-            prediction_probs = None
-            if hasattr(model, 'predict_proba'):
-                prediction_probs = model.predict_proba(X_prediction).tolist()
-
-            # Get feature importance if available
-            feature_importance = None
-            if hasattr(model, 'feature_importances_'):
-                feature_importance = model.feature_importances_.tolist()
-
-            logging.info(f"Predicted actions for ticker {ticker}: {predictions}")
-
-            resp = {
-                'status': 'success',
-                'message': f'Predictions generated successfully for ticker: {ticker}',
-                'ticker': ticker,
-                'predictions': predictions.tolist(),
-                'prediction_probabilities': prediction_probs,
-                'feature_importance': feature_importance,
-                'input_shape': X_prediction.shape,
-                'features_used': available_features,
-                'model_type': type(model).__name__,
-                'model_source': model_source
-            }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='predict_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
-            return jsonify(resp)
-        except Exception as e:
-            logging.error(f"Error making predictions: {str(e)}")
-            resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='predict_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
-            return jsonify(resp), 500
-
     @staticmethod
     def _serialize_model(model):
         """Serialize model to base64 string for storage."""
@@ -771,3 +604,107 @@ class B3APIHandlers:
         model_bytes = base64.b64decode(model_b64)
         buffer = io.BytesIO(model_bytes)
         return joblib.load(buffer)
+
+    def _load_model_for_prediction(self):
+        model = None
+        model_source = None
+        if 'trained_model' in self.pipeline_state:
+            model = self._deserialize_model(self.pipeline_state['trained_model'])
+            model_source = 'pipeline'
+        else:
+            if self.model_saving_service.model_exists():
+                model_path = self.model_saving_service.get_model_relative_path()
+                model = self.model_saving_service.load_model(model_path)
+                model_source = 'storage'
+                logging.info(f"Loaded model from storage: {model_path}")
+            else:
+                raise FileNotFoundError('No trained model found in pipeline or storage. Please train model first.')
+        return model, model_source
+
+    def _get_expected_features(self):
+        if 'X_features' in self.pipeline_state:
+            return list(pd.DataFrame(self.pipeline_state['X_features']).columns)
+        preprocessing_service = B3ModelPreprocessingService()
+        logging.info(f"Using fallback feature set for file-based model: {preprocessing_service._FEATURE_SET}")
+        return preprocessing_service._FEATURE_SET
+
+    @staticmethod
+    def _validate_and_prepare_features(new_data, expected_features):
+        features = [col for col in new_data.select_dtypes(include=['number']).columns if col != 'date']
+        x_new = new_data[features]
+        available_features = [f for f in expected_features if f in x_new.columns]
+        missing_features = set(expected_features) - set(available_features)
+        return x_new, available_features, missing_features
+
+    def predict_data_handler(self):
+        """Make predictions using the trained model."""
+        req_data = request.get_json() if request.is_json else None
+        try:
+            try:
+                model, model_source = self._load_model_for_prediction()
+            except Exception as e:
+                resp = {'status': 'error', 'message': str(e)}
+                self._log_api_activity('predict_data_handler', req_data, resp, 'error', str(e))
+                return jsonify(resp), 400 if isinstance(e, FileNotFoundError) else 500
+
+            data = req_data or {}
+            ticker = data.get('ticker')
+            if not ticker:
+                resp = {'status': 'error', 'message': 'No ticker provided. Please include "ticker" field in request.'}
+                self._log_api_activity('predict_data_handler', req_data, resp, 'error', resp['message'])
+                return jsonify(resp), 400
+
+            data_loader = self.data_loading_service.get_loader()
+            new_data = data_loader.fetch(ticker=ticker)
+            if new_data.empty:
+                resp = {'status': 'error', 'message': f'No data found for ticker: {ticker}'}
+                self._log_api_activity('predict_data_handler', req_data, resp, 'error', resp['message'])
+                return jsonify(resp), 400
+
+            expected_features = self._get_expected_features()
+            x_new, available_features, missing_features = self._validate_and_prepare_features(new_data,
+                                                                                              expected_features)
+            if missing_features:
+                resp = {
+                    'status': 'error',
+                    'message': f'Missing required features in data for ticker {ticker}: {list(missing_features)}',
+                    'required_features': expected_features,
+                    'available_features': list(x_new.columns)
+                }
+                self._log_api_activity('predict_data_handler', req_data, resp, 'error', resp['message'])
+                return jsonify(resp), 400
+
+            x_prediction = x_new[available_features]
+            predictions = model.predict(x_prediction)
+            prediction_probs = model.predict_proba(x_prediction).tolist() if hasattr(model, 'predict_proba') else None
+            feature_importance = model.feature_importances_.tolist() if hasattr(model, 'feature_importances_') else None
+
+            logging.info(f"Predicted actions for ticker {ticker}: {predictions}")
+            resp = {
+                'status': 'success',
+                'message': f'Predictions generated successfully for ticker: {ticker}',
+                'ticker': ticker,
+                'predictions': predictions.tolist(),
+                'prediction_probabilities': prediction_probs,
+                'feature_importance': feature_importance,
+                'input_shape': x_prediction.shape,
+                'features_used': available_features,
+                'model_type': type(model).__name__,
+                'model_source': model_source
+            }
+            self._log_api_activity('predict_data_handler', req_data, resp, 'success')
+            return jsonify(resp)
+        except Exception as e:
+            logging.error(f"Error making predictions: {str(e)}")
+            resp = {'status': 'error', 'message': str(e)}
+            self._log_api_activity('predict_data_handler', req_data, resp, 'error', str(e))
+            return jsonify(resp), 500
+
+    def _store_split_data(self, x_train, x_val, x_test, y_train, y_val, y_test):
+        """Helper to store split data into pipeline_state."""
+        self.pipeline_state['X_train'] = x_train.to_dict('records')
+        self.pipeline_state['X_val'] = x_val.to_dict('records')
+        self.pipeline_state['X_test'] = x_test.to_dict('records')
+        self.pipeline_state['y_train'] = y_train.to_dict()
+        self.pipeline_state['y_val'] = y_val.to_dict()
+        self.pipeline_state['y_test'] = y_test.to_dict()
