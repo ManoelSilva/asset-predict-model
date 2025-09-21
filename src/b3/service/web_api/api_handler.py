@@ -35,6 +35,19 @@ class B3APIHandlers:
         # Add training_data_loader for persistent API logging
         self.request_data_loader = request_data_loader or TrainingRequestDataLoader()
 
+    def _log_api_activity(self, endpoint, request_data, response_data, status, error_message=None):
+        """Encapsulate API activity logging."""
+        if self.request_data_loader:
+            log_kwargs = {
+                'endpoint': endpoint,
+                'request_data': request_data,
+                'response_data': response_data,
+                'status': status
+            }
+            if error_message is not None:
+                log_kwargs['error_message'] = error_message
+            self.request_data_loader.log_api_activity(**log_kwargs)
+
     def load_data_handler(self):
         """Load B3 market data."""
         req_data = request.get_json() if request.is_json else None
@@ -49,25 +62,23 @@ class B3APIHandlers:
                 'data_shape': df.shape,
                 'columns': list(df.columns)
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='load_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='load_data_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error loading data: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='load_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='load_data_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def preprocess_data_handler(self):
@@ -76,14 +87,13 @@ class B3APIHandlers:
         try:
             if 'raw_data' not in self.pipeline_state:
                 resp = {'status': 'error', 'message': 'No data loaded. Please load data first.'}
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='preprocess_data_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
+                self._log_api_activity(
+                    endpoint='preprocess_data_handler',
+                    request_data=req_data,
+                    response_data=resp,
+                    status='error',
+                    error_message=resp['message']
+                )
                 return jsonify(resp), 400
 
             # Reconstruct DataFrame from stored data
@@ -105,25 +115,23 @@ class B3APIHandlers:
                 'feature_columns': list(X.columns),
                 'target_distribution': y.value_counts().to_dict()
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='preprocess_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='preprocess_data_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error preprocessing data: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='preprocess_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='preprocess_data_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def split_data_handler(self):
@@ -132,14 +140,13 @@ class B3APIHandlers:
         try:
             if 'X_features' not in self.pipeline_state or 'y_targets' not in self.pipeline_state:
                 resp = {'status': 'error', 'message': 'No preprocessed data found. Please preprocess data first.'}
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='split_data_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
+                self._log_api_activity(
+                    endpoint='split_data_handler',
+                    request_data=req_data,
+                    response_data=resp,
+                    status='error',
+                    error_message=resp['message']
+                )
                 return jsonify(resp), 400
 
             # Get parameters from request
@@ -171,25 +178,23 @@ class B3APIHandlers:
                 'validation_size': len(X_val),
                 'test_size': len(X_test)
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='split_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='split_data_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error splitting data: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='split_data_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='split_data_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def train_model_handler(self):
@@ -198,14 +203,13 @@ class B3APIHandlers:
         try:
             if 'X_train' not in self.pipeline_state or 'y_train' not in self.pipeline_state:
                 resp = {'status': 'error', 'message': 'No training data found. Please split data first.'}
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='train_model_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
+                self._log_api_activity(
+                    endpoint='train_model_handler',
+                    request_data=req_data,
+                    response_data=resp,
+                    status='error',
+                    error_message=resp['message']
+                )
                 return jsonify(resp), 400
 
             # Get parameters from request
@@ -229,25 +233,23 @@ class B3APIHandlers:
                 'model_type': type(model).__name__,
                 'best_params': model.get_params()
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='train_model_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='train_model_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error training model: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='train_model_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='train_model_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def evaluate_model_handler(self):
@@ -256,14 +258,13 @@ class B3APIHandlers:
         try:
             if 'trained_model' not in self.pipeline_state:
                 resp = {'status': 'error', 'message': 'No trained model found. Please train model first.'}
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='evaluate_model_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
+                self._log_api_activity(
+                    endpoint='evaluate_model_handler',
+                    request_data=req_data,
+                    response_data=resp,
+                    status='error',
+                    error_message=resp['message']
+                )
                 return jsonify(resp), 400
 
             # Reconstruct model
@@ -286,25 +287,23 @@ class B3APIHandlers:
                 'message': 'Model evaluated successfully',
                 'evaluation_results': results
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='evaluate_model_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='evaluate_model_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error evaluating model: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='evaluate_model_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='evaluate_model_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def save_model_handler(self):
@@ -313,14 +312,13 @@ class B3APIHandlers:
         try:
             if 'trained_model' not in self.pipeline_state:
                 resp = {'status': 'error', 'message': 'No trained model found. Please train model first.'}
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='save_model_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='error',
-                        error_message=resp['message']
-                    )
+                self._log_api_activity(
+                    endpoint='save_model_handler',
+                    request_data=req_data,
+                    response_data=resp,
+                    status='error',
+                    error_message=resp['message']
+                )
                 return jsonify(resp), 400
 
             # Get parameters from request
@@ -339,25 +337,23 @@ class B3APIHandlers:
                 'message': 'Model saved successfully',
                 'model_path': model_path
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='save_model_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='save_model_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error saving model: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='save_model_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='save_model_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def train_complete_handler(self):
@@ -384,25 +380,23 @@ class B3APIHandlers:
                 'message': 'Complete training pipeline started in background',
                 'training_status': 'running'
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='train_complete_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='train_complete_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error starting complete training pipeline: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='train_complete_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='train_complete_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def _run_complete_training_pipeline(self, model_dir, n_jobs, test_size, val_size):
@@ -492,25 +486,23 @@ class B3APIHandlers:
                 'status': 'success',
                 'pipeline_state': status_info
             }
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='get_status_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='get_status_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error getting status: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='get_status_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='get_status_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def get_training_status_handler(self):
@@ -523,13 +515,12 @@ class B3APIHandlers:
                     'message': 'No training in progress',
                     'training_status': 'not_started'
                 }
-                if self.request_data_loader:
-                    self.request_data_loader.log_api_activity(
-                        endpoint='get_training_status_handler',
-                        request_data=req_data,
-                        response_data=resp,
-                        status='success'
-                    )
+                self._log_api_activity(
+                    endpoint='get_training_status_handler',
+                    request_data=req_data,
+                    response_data=resp,
+                    status='success'
+                )
                 return jsonify(resp)
 
             training_status = self.pipeline_state['training_status']
@@ -549,25 +540,23 @@ class B3APIHandlers:
                 if 'training_error' in self.pipeline_state:
                     response_data['error'] = self.pipeline_state['training_error']
 
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='get_training_status_handler',
-                    request_data=req_data,
-                    response_data=response_data,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='get_training_status_handler',
+                request_data=req_data,
+                response_data=response_data,
+                status='success'
+            )
             return jsonify(response_data)
         except Exception as e:
             logging.error(f"Error getting training status: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='get_training_status_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='get_training_status_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def clear_state_handler(self):
@@ -582,25 +571,23 @@ class B3APIHandlers:
 
             self.pipeline_state = {}
             resp = {'status': 'success', 'message': 'Pipeline state cleared'}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='clear_state_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
+            self._log_api_activity(
+                endpoint='clear_state_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='success'
+            )
             return jsonify(resp)
         except Exception as e:
             logging.error(f"Error clearing state: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
-            if self.request_data_loader:
-                self.request_data_loader.log_api_activity(
-                    endpoint='clear_state_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='error',
-                    error_message=str(e)
-                )
+            self._log_api_activity(
+                endpoint='clear_state_handler',
+                request_data=req_data,
+                response_data=resp,
+                status='error',
+                error_message=str(e)
+            )
             return jsonify(resp), 500
 
     def predict_data_handler(self):
