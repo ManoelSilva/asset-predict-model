@@ -1,32 +1,20 @@
 import logging
+
 import numpy as np
 from pandas import DataFrame, Series
 
 from b3.exception.model import B3ModelProcessException
+from constants import FEATURE_SET
 
 
-class B3DataPreprocessingService:
+class B3ModelPreprocessingService:
     """
     Service responsible for preprocessing B3 market data including feature validation,
     data cleaning, and target label generation.
     """
 
-    _FEATURE_SET = [
-        'rolling_volatility_5',
-        'moving_avg_10',
-        'macd',
-        'rsi_14',
-        'volume_change',
-        'avg_volume_10',
-        'best_buy_sell_spread',
-        'close_to_best_buy',
-        'price_momentum_5',
-        'high_breakout_20',
-        'bollinger_upper',
-        'stochastic_14'
-    ]
-
-    def validate_features(self, df: DataFrame) -> DataFrame:
+    @staticmethod
+    def validate_features(df: DataFrame) -> DataFrame:
         """
         Validates that all required features are present in the dataset.
         
@@ -39,8 +27,8 @@ class B3DataPreprocessingService:
         Raises:
             B3ModelProcessException: If required features are missing
         """
-        features = [f for f in self._FEATURE_SET if f in df.columns]
-        missing_features = set(self._FEATURE_SET) - set(features)
+        features = [f for f in FEATURE_SET if f in df.columns]
+        missing_features = set(FEATURE_SET) - set(features)
         if missing_features:
             raise B3ModelProcessException(f"Missing features in data: {missing_features}")
         return df[features]

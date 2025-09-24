@@ -1,47 +1,31 @@
 import logging
+
 import pandas as pd
 
-from b3.service.data.db.b3.data_loader import B3DataLoader
-from b3.service.data.db.b3.data_loading_service import B3DataLoadingService
-from b3.service.data.db.b3.data_preprocessing_service import B3DataPreprocessingService
-from b3.service.model.model_training_service import B3ModelTrainingService
-from b3.service.model.model_evaluation_service import B3ModelEvaluationService
-from b3.service.model.model_saving_service import B3ModelSavingService
+from b3.service.data.db.b3_featured.data_loader import B3DataLoader
+from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
 from b3.service.data.storage.data_storage_service import DataStorageService
+from b3.service.model.model_evaluation_service import B3ModelEvaluationService
+from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
+from b3.service.model.model_saving_service import B3ModelSavingService
+from b3.service.model.model_training_service import B3ModelTrainingService
+from constants import FEATURE_SET
 
 
 class B3Model(object):
-    _RANDOM_STATE = 42
-
-    _FEATURE_SET = [
-        'rolling_volatility_5',
-        'moving_avg_10',
-        'macd',
-        'rsi_14',
-        'volume_change',
-        'avg_volume_10',
-        'best_buy_sell_spread',
-        'close_to_best_buy',
-        'price_momentum_5',
-        'high_breakout_20',
-        'bollinger_upper',
-        'stochastic_14'
-    ]
-
     def __init__(self, storage_service: DataStorageService = None) -> None:
         self._loader = B3DataLoader()
         # Initialize storage service
         self.storage_service = storage_service or DataStorageService()
         # Initialize service classes with shared storage service
         self.data_loading_service = B3DataLoadingService()
-        self.preprocessing_service = B3DataPreprocessingService()
+        self.preprocessing_service = B3ModelPreprocessingService()
         self.training_service = B3ModelTrainingService()
         self.evaluation_service = B3ModelEvaluationService(self.storage_service)
         self.saving_service = B3ModelSavingService(self.storage_service)
 
     def get_loader(self):
         return self._loader
-
 
     def predict(self, X: pd.DataFrame, model_dir: str = "models"):
         """
@@ -54,7 +38,7 @@ class B3Model(object):
         """
         clf_path = self.saving_service.get_model_path(model_dir)
         clf = self.saving_service.load_model(clf_path)
-        features = [f for f in B3Model._FEATURE_SET if f in X.columns]
+        features = [f for f in FEATURE_SET if f in X.columns]
         return clf.predict(X[features])
 
     def train(self, model_dir: str = "models", n_jobs: int = 5, test_size: float = 0.8, val_size: float = 0.2):
@@ -88,6 +72,5 @@ class B3Model(object):
 
         # Step 6: Save model using saving service
         model_path = self.saving_service.save_model(clf, model_dir)
-        
-        logging.info(f"Training completed successfully. Model saved at: {model_path}")
 
+        logging.info(f"Training completed successfully. Model saved at: {model_path}")
