@@ -1,0 +1,141 @@
+openapi: 3.0.0
+info:
+  title: B3 Model API
+  description: API for B3 model training, prediction, and evaluation
+  version: 1.0.0
+servers:
+  - url: http://localhost:5001
+paths:
+  /api/b3/load-data:
+    post:
+      summary: Load data for model training
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticker:
+                  type: string
+      responses:
+        '200':
+          description: Data loaded successfully
+  /api/b3/preprocess-data:
+    post:
+      summary: Preprocess data for model training
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Data preprocessed successfully
+  /api/b3/split-data:
+    post:
+      summary: Split data for training and testing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                split_ratio:
+                  type: number
+      responses:
+        '200':
+          description: Data split successfully
+  /api/b3/train-model:
+    post:
+      summary: Train the model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                params:
+                  type: object
+      responses:
+        '200':
+          description: Model trained successfully
+  /api/b3/evaluate-model:
+    post:
+      summary: Evaluate the model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                params:
+                  type: object
+      responses:
+        '200':
+          description: Model evaluated successfully
+  /api/b3/save-model:
+    post:
+      summary: Save the trained model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model_name:
+                  type: string
+      responses:
+        '200':
+          description: Model saved successfully
+  /api/b3/complete-training:
+    post:
+      summary: Complete the training pipeline
+      requestBody:
+        required: false
+      responses:
+        '200':
+          description: Training pipeline completed
+  /api/b3/status:
+    get:
+      summary: Get pipeline status
+      responses:
+        '200':
+          description: Pipeline status returned
+  /api/b3/training-status:
+    get:
+      summary: Get model training status
+      responses:
+        '200':
+          description: Training status returned
+  /api/b3/clear-state:
+    post:
+      summary: Clear pipeline state
+      requestBody:
+        required: false
+      responses:
+        '200':
+          description: State cleared
+  /api/b3/predict:
+    post:
+      summary: Predict using the trained model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticker:
+                  type: string
+      responses:
+        '200':
+          description: Prediction returned

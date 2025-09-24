@@ -11,3 +11,4 @@ numpy
 Flask
 waitress
 flask-cors
+Flask-Swagger-UI
