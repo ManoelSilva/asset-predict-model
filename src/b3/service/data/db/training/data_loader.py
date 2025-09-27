@@ -1,7 +1,5 @@
 import json
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional
 from enum import Enum
 
 import duckdb
@@ -240,7 +238,7 @@ class TrainingRequestDataLoader:
         try:
             logging.info(f"Deleting training request {request_id}...")
             query = f"DELETE FROM {self.table_name} WHERE request_id = ?"
-            result = self.conn.execute(query, (request_id,))
+            self.conn.execute(query, (request_id,))
             logging.info(f"Successfully deleted training request {request_id}")
             return True
         except Exception as e:

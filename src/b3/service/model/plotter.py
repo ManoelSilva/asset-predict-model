@@ -1,9 +1,9 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 import logging
 from io import BytesIO
 
-from b3.service.data.storage.data_storage_service import DataStorageService
+import matplotlib.pyplot as plt
+import pandas as pd
+from asset_model_data_storage.data_storage_service import DataStorageService
 
 
 class B3DashboardPlotter:
@@ -67,19 +67,19 @@ class B3DashboardPlotter:
             axes[i].legend()
         plt.xlabel('Date')
         plt.tight_layout()
-        
+
         if save_path:
             try:
                 # Create directory if using local storage
                 if self.storage_service.is_local_storage():
                     import os
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                
+
                 # Save plot to bytes
                 plot_bytes = BytesIO()
                 plt.savefig(plot_bytes, dpi=300, bbox_inches='tight', format='png')
                 plot_bytes.seek(0)
-                
+
                 # Save using storage service
                 saved_path = self.storage_service.save_file(save_path, plot_bytes, 'image/png')
                 logging.info(f"Plot saved successfully to: {saved_path}")

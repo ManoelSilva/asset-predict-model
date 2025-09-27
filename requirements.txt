@@ -12,3 +12,4 @@ Flask
 waitress
 flask-cors
 Flask-Swagger-UI
+asset-model-data-storage

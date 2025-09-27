@@ -4,10 +4,11 @@ Example script demonstrating how to use the B3 Training API.
 This script shows how to use individual endpoints and the complete training pipeline.
 """
 
-import requests
 import json
-import time
-from src.constants import LOCALHOST_URL, SEPARATOR_LINE
+
+import requests
+
+from constants import LOCALHOST_URL, SEPARATOR_LINE
 
 
 class B3TrainingAPIClient:

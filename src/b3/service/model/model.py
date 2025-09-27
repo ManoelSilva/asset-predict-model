@@ -1,10 +1,10 @@
 import logging
 
 import pandas as pd
+from asset_model_data_storage.data_storage_service import DataStorageService
 
 from b3.service.data.db.b3_featured.data_loader import B3DataLoader
 from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
-from b3.service.data.storage.data_storage_service import DataStorageService
 from b3.service.model.model_evaluation_service import B3ModelEvaluationService
 from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.model.model_saving_service import B3ModelSavingService
