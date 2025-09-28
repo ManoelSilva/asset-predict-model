@@ -6,7 +6,7 @@ import datetime
 
 
 class B3DataLoader(object):
-    _URL = 'https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D05092025.ZIP'
+    _URL = 'https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D25092025.ZIP'
 
     def __init__(self, db_path="md:b3"):
         """

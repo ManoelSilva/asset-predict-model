@@ -3,9 +3,8 @@ import os
 from io import BytesIO
 
 import joblib
+from asset_model_data_storage.data_storage_service import DataStorageService
 from sklearn.ensemble import RandomForestClassifier
-
-from b3.service.data.storage.data_storage_service import DataStorageService
 
 # Constants
 DEFAULT_MODEL_NAME = "b3_model.joblib"

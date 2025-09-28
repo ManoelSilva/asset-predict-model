@@ -1,8 +1,9 @@
 import logging
-
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask_cors import CORS
+from flask_swagger_ui import get_swaggerui_blueprint
+import os
 
 from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
 from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
@@ -23,6 +24,19 @@ class B3ModelAPI:
         load_dotenv()
         self.app = Flask(__name__)
         CORS(self.app)
+
+        # Serve swagger.yml as static file
+        @self.app.route('/swagger/swagger.yml')
+        def swagger_spec():
+            swagger_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../config/web_api/swagger'))
+            return send_from_directory(swagger_dir, 'swagger.yml')
+
+        # Swagger UI setup
+        swaggerui_blueprint = get_swaggerui_blueprint(
+            '/swagger',
+            '/swagger/swagger.yml'
+        )
+        self.app.register_blueprint(swaggerui_blueprint, url_prefix='/swagger')
 
         # Initialize services
         self.data_loading_service = B3DataLoadingService()

@@ -69,6 +69,80 @@ python src/app.py train --help
 python src/app.py predict --help
 ```
 
+## Visão Geral da Arquitetura
+
+O projeto é construído em torno de uma arquitetura modular de serviços para predição de ativos, com cada etapa do pipeline implementada como uma classe de serviço reutilizável. Essas classes podem ser usadas diretamente em Python ou acessadas via uma API REST.
+
+### Classes de Serviço
+- **B3DataLoadingService**: Carrega dados de mercado da B3.
+- **B3ModelPreprocessingService**: Realiza pré-processamento, validação de features e geração de labels.
+- **B3ModelTrainingService**: Treinamento do modelo e divisão dos dados.
+- **B3ModelEvaluationService**: Avaliação e visualização do modelo.
+- **B3ModelSavingService**: Persistência do modelo (salvar/carregar modelos).
+
+## API REST (Flask)
+
+Uma API REST baseada em Flask expõe todas as etapas de treinamento e predição como endpoints. A API é documentada com OpenAPI/Swagger (acesse `/swagger` com o servidor rodando).
+
+### Principais Endpoints
+- `POST /api/b3/load-data`: Carrega dados de mercado da B3
+- `POST /api/b3/preprocess-data`: Pré-processa os dados carregados
+- `POST /api/b3/split-data`: Divide os dados em treino/validação/teste
+- `POST /api/b3/train-model`: Treina o modelo (com ajuste de hiperparâmetros)
+- `POST /api/b3/evaluate-model`: Avalia o modelo treinado
+- `POST /api/b3/save-model`: Salva o modelo treinado
+- `POST /api/b3/complete-training`: Executa todo o pipeline de treinamento
+- `POST /api/b3/predict`: Faz predições para um ticker específico
+- `GET /api/b3/status`: Consulta o status atual do pipeline
+- `GET /api/b3/training-status`: Consulta o status do treinamento
+- `POST /api/b3/clear-state`: Limpa o estado do pipeline
+
+### OpenAPI/Swagger
+- A API é documentada com Swagger UI, disponível em `/swagger` com o servidor rodando.
+- A especificação OpenAPI está em `/swagger/swagger.yml`.
+
+## Exemplos de Uso
+
+### Usando a API Python
+```python
+from b3.service.model import B3Model
+
+model = B3Model()
+model.train(model_dir="models", n_jobs=5, test_size=0.2, val_size=0.2)
+predictions = model.predict(new_data, model_dir="models")
+```
+
+### Usando Serviços Individuais
+```python
+from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
+from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
+from b3.service.model.model_training_service import B3ModelTrainingService
+
+data_service = B3DataLoadingService()
+df = data_service.load_data()
+
+preprocessing_service = B3ModelPreprocessingService()
+X, df_processed, y = preprocessing_service.preprocess_data(df)
+
+training_service = B3ModelTrainingService()
+X_train, X_val, X_test, y_train, y_val, y_test = training_service.split_data(X, y)
+model = training_service.train_model(X_train, y_train)
+```
+
+### Usando a REST API
+Inicie o servidor da API:
+```bash
+python src/b3/service/web_api/b3_model_api.py
+```
+
+Exemplo de requisição (usando `requests`):
+```python
+import requests
+response = requests.post("http://localhost:5000/api/b3/load-data")
+```
+
+Veja a Swagger UI em [http://localhost:5000/swagger](http://localhost:5000/swagger) para documentação completa da API e testes interativos.
+
 ---
 
 ## Licença
