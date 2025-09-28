@@ -163,7 +163,6 @@ The API will be available at `http://localhost:5000`
 
 ## Example Client
 
-See `example_api_usage.py` for a complete example of how to use the API client to interact with all endpoints.
 
 ## Benefits of the New Architecture
 
@@ -180,6 +179,16 @@ See `example_api_usage.py` for a complete example of how to use the API client t
 - The `B3Model` class now uses the new service classes internally
 - All original functionality is preserved but now uses the modular architecture
 - The `predict()` method now uses the `B3ModelSavingService` for loading models
+
+## Cross-References
+
+- For CLI usage and overall project setup, see the main [README.md](../../../../README.md).
+- For API endpoint details and OpenAPI/Swagger documentation, see [swagger.yml](../../config/web_api/swagger/swagger.yml) and the main README.
+
+## Additional Notes
+- All service classes can be used independently or via the REST API.
+- The API server entry point is `src/b3/service/web_api/b3_model_api.py`.
+- Endpoints and handler classes are defined in `src/b3/service/web_api/handler/`.
 
 
 

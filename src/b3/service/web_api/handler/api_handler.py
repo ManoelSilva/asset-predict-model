@@ -6,15 +6,15 @@ from asset_model_data_storage.data_storage_service import DataStorageService
 
 from b3.service.data.db.training.data_loader import TrainingRequestDataLoader
 from b3.service.model.model_saving_service import B3ModelSavingService
-from data_loading_handler import DataLoadingHandler
-from data_preprocessing_handler import DataPreprocessingHandler
-from data_splitting_handler import DataSplittingHandler
-from model_complete_training_handler import CompleteTrainingHandler
-from model_evaluation_handler import ModelEvaluationHandler
-from model_predict_handler import ModelPredictHandler
-from model_saving_handler import ModelSavingHandler
-from model_training_handler import ModelTrainingHandler
-from pipeline_status_handler import PipelineStatusHandler
+from b3.service.web_api.handler.data_loading_handler import DataLoadingHandler
+from b3.service.web_api.handler.data_preprocessing_handler import DataPreprocessingHandler
+from b3.service.web_api.handler.data_splitting_handler import DataSplittingHandler
+from b3.service.web_api.handler.model_complete_training_handler import CompleteTrainingHandler
+from b3.service.web_api.handler.model_evaluation_handler import ModelEvaluationHandler
+from b3.service.web_api.handler.model_predict_handler import ModelPredictHandler
+from b3.service.web_api.handler.model_saving_handler import ModelSavingHandler
+from b3.service.web_api.handler.model_training_handler import ModelTrainingHandler
+from b3.service.web_api.handler.pipeline_status_handler import PipelineStatusHandler
 
 
 # Utility functions for serialization/deserialization
