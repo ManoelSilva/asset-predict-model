@@ -1,7 +1,8 @@
+import os
 import requests
 
 class AssetApiClient:
-    BASE_URL = "http://localhost:5002/asset/"
+    BASE_URL = os.getenv("ASSET_API_BASE_URL", "http://localhost:5002/asset/")
 
     @staticmethod
     def fetch_ticker_info(ticker):
