@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 from flask import request, jsonify
 
+from b3.service.web_api.api_client import AssetApiClient
 from constants import FEATURE_SET
 
 
@@ -88,8 +89,30 @@ class ModelPredictHandler:
                 )
                 return jsonify(resp), 400
 
-            data_loader = self._data_loading_service.get_loader()
-            new_data = data_loader.fetch(ticker=ticker)
+            # Fetch ticker info from external API instead of data_loader
+            ticker_info, api_error = AssetApiClient.fetch_ticker_info(ticker)
+            if api_error or ticker_info is None:
+                resp = {'status': 'error', 'message': f'Error fetching ticker info: {api_error or "No data returned"}'}
+                self._log_api_activity(
+                    endpoint='predict_data_handler',
+                    request_data=data,
+                    response_data=resp,
+                    status='error'
+                )
+                return jsonify(resp), 400
+
+            # Convert the API response to a DataFrame using only the 'data' field
+            asset_data = ticker_info.get('data') if isinstance(ticker_info, dict) else None
+            if asset_data is None:
+                resp = {'status': 'error', 'message': f'No asset data found in API response for ticker: {ticker}'}
+                self._log_api_activity(
+                    endpoint='predict_data_handler',
+                    request_data=data,
+                    response_data=resp,
+                    status='error'
+                )
+                return jsonify(resp), 400
+            new_data = pd.DataFrame([asset_data])
             if new_data.empty:
                 resp = {'status': 'error', 'message': f'No data found for ticker: {ticker}'}
                 self._log_api_activity(
