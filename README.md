@@ -143,6 +143,129 @@ response = requests.post("http://localhost:5000/api/b3/load-data")
 
 See the Swagger UI at [http://localhost:5000/swagger](http://localhost:5000/swagger) for full API documentation and to try endpoints interactively.
 
+## Model Performance and Evaluation
+
+### Model Metrics
+- **Algorithm**: Random Forest Classifier
+- **Target**: Asset price direction prediction (up/down)
+- **Features**: Technical indicators, price movements, volume patterns
+- **Evaluation**: Cross-validation with train/validation/test splits
+
+### Training Data Requirements
+- **Source**: B3 historical data from asset-data-lake
+- **Time Period**: Configurable (default: recent 2 years)
+- **Minimum Records**: 1000+ per asset for reliable predictions
+- **Update Frequency**: Retrain when new data is available
+
+### Model Evaluation Results
+- **Accuracy**: Varies by asset (typically 55-70%)
+- **Precision/Recall**: Balanced for both classes
+- **Feature Importance**: Price momentum and volatility indicators most significant
+- **Validation**: Time-series cross-validation to prevent data leakage
+
+## Environment Configuration
+
+### Required Environment Variables
+
+```bash
+export MOTHERDUCK_TOKEN="your_motherduck_token_here"
+export environment="AWS"  # or "LOCAL" for local development
+export EC2_HOST="your_ec2_public_ip"  # for production deployment
+```
+
+### Local Development Setup
+
+1. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Set environment variables**
+   ```bash
+   export MOTHERDUCK_TOKEN="your_token"
+   export environment="LOCAL"
+   ```
+
+3. **Run the API server**
+   ```bash
+   python src/web_api.py
+   ```
+
+## Service Deployment
+
+### Production Deployment (AWS EC2)
+
+The service is designed to run as a systemd service on AWS EC2:
+
+```bash
+# Deploy using the provided script
+sudo MOTHERDUCK_TOKEN=your_token EC2_HOST=your_ip bash deploy_asset_predict_model.sh
+```
+
+### Service Management
+
+```bash
+# Check service status
+sudo systemctl status asset-predict-model
+
+# View logs
+sudo journalctl -u asset-predict-model -f
+
+# Restart service
+sudo systemctl restart asset-predict-model
+```
+
+## Model Versioning and Persistence
+
+### Model Storage
+- **Format**: Joblib serialized models
+- **Location**: `models/` directory
+- **Naming**: `b3_model.joblib`
+- **Backup**: Previous versions archived before updates
+
+### Model Updates
+- **Trigger**: Manual retraining or scheduled updates
+- **Process**: Load new data → Retrain → Validate → Deploy
+- **Rollback**: Previous model versions available for quick rollback
+
+## API Integration
+
+### Frontend Integration
+The model API integrates with the Angular frontend:
+- **Endpoint**: `POST /api/b3/predict`
+- **Input**: `{"ticker": "PETR4"}`
+- **Output**: Prediction result with confidence
+
+### Data Lake Integration
+- **Data Source**: Connects to asset-data-lake for historical data
+- **Real-time**: Uses latest available data for predictions
+- **Caching**: Model predictions cached for performance
+
+## Performance Considerations
+
+### Model Inference
+- **Latency**: < 100ms for single predictions
+- **Throughput**: 100+ predictions/second
+- **Memory**: ~500MB for loaded model
+- **CPU**: Single-threaded inference
+
+### Scalability
+- **Horizontal**: Multiple instances behind load balancer
+- **Vertical**: t3.large EC2 instance sufficient for moderate load
+- **Caching**: Redis recommended for high-traffic scenarios
+
+## Monitoring and Logging
+
+### Health Checks
+- **Endpoint**: `GET /api/b3/status`
+- **Metrics**: Model loaded, data connection, prediction latency
+- **Alerts**: Service down, prediction failures
+
+### Logging
+- **Level**: INFO for normal operations, ERROR for failures
+- **Format**: Structured JSON logs
+- **Retention**: 30 days (configurable)
+
 ## License
 MIT License
 

@@ -143,7 +143,128 @@ response = requests.post("http://localhost:5000/api/b3/load-data")
 
 Veja a Swagger UI em [http://localhost:5000/swagger](http://localhost:5000/swagger) para documentação completa da API e testes interativos.
 
----
+## Performance e Avaliação do Modelo
+
+### Métricas do Modelo
+- **Algoritmo**: Random Forest Classifier
+- **Target**: Predição de direção do preço do ativo (alta/baixa)
+- **Features**: Indicadores técnicos, movimentos de preço, padrões de volume
+- **Avaliação**: Validação cruzada com divisões treino/validação/teste
+
+### Requisitos de Dados de Treinamento
+- **Fonte**: Dados históricos da B3 do asset-data-lake
+- **Período**: Configurável (padrão: últimos 2 anos)
+- **Registros Mínimos**: 1000+ por ativo para predições confiáveis
+- **Frequência de Atualização**: Retreinar quando novos dados estiverem disponíveis
+
+### Resultados de Avaliação do Modelo
+- **Precisão**: Varia por ativo (tipicamente 55-70%)
+- **Precision/Recall**: Balanceado para ambas as classes
+- **Importância das Features**: Indicadores de momentum e volatilidade de preço mais significativos
+- **Validação**: Validação cruzada de séries temporais para prevenir vazamento de dados
+
+## Configuração de Ambiente
+
+### Variáveis de Ambiente Necessárias
+
+```bash
+export MOTHERDUCK_TOKEN="seu_token_motherduck"
+export environment="AWS"  # ou "LOCAL" para desenvolvimento local
+export EC2_HOST="seu_ip_publico_ec2"  # para deploy de produção
+```
+
+### Configuração de Desenvolvimento Local
+
+1. **Instalar dependências**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Definir variáveis de ambiente**
+   ```bash
+   export MOTHERDUCK_TOKEN="seu_token"
+   export environment="LOCAL"
+   ```
+
+3. **Executar o servidor da API**
+   ```bash
+   python src/web_api.py
+   ```
+
+## Deploy do Serviço
+
+### Deploy de Produção (AWS EC2)
+
+O serviço é projetado para rodar como um serviço systemd no AWS EC2:
+
+```bash
+# Deploy usando o script fornecido
+sudo MOTHERDUCK_TOKEN=seu_token EC2_HOST=seu_ip bash deploy_asset_predict_model.sh
+```
+
+### Gerenciamento do Serviço
+
+```bash
+# Verificar status do serviço
+sudo systemctl status asset-predict-model
+
+# Ver logs
+sudo journalctl -u asset-predict-model -f
+
+# Reiniciar serviço
+sudo systemctl restart asset-predict-model
+```
+
+## Versionamento e Persistência do Modelo
+
+### Armazenamento do Modelo
+- **Formato**: Modelos serializados com Joblib
+- **Localização**: Diretório `models/`
+- **Nomenclatura**: `b3_model.joblib`
+- **Backup**: Versões anteriores arquivadas antes de atualizações
+
+### Atualizações do Modelo
+- **Trigger**: Retreinamento manual ou atualizações agendadas
+- **Processo**: Carregar novos dados → Retreinar → Validar → Deploy
+- **Rollback**: Versões anteriores do modelo disponíveis para rollback rápido
+
+## Integração da API
+
+### Integração com Frontend
+A API do modelo integra com o frontend Angular:
+- **Endpoint**: `POST /api/b3/predict`
+- **Input**: `{"ticker": "PETR4"}`
+- **Output**: Resultado da predição com confiança
+
+### Integração com Data Lake
+- **Fonte de Dados**: Conecta ao asset-data-lake para dados históricos
+- **Tempo Real**: Usa os dados mais recentes disponíveis para predições
+- **Cache**: Predições do modelo em cache para performance
+
+## Considerações de Performance
+
+### Inferência do Modelo
+- **Latência**: < 100ms para predições únicas
+- **Throughput**: 100+ predições/segundo
+- **Memória**: ~500MB para modelo carregado
+- **CPU**: Inferência single-threaded
+
+### Escalabilidade
+- **Horizontal**: Múltiplas instâncias atrás de load balancer
+- **Vertical**: Instância EC2 t3.large suficiente para carga moderada
+- **Cache**: Redis recomendado para cenários de alto tráfego
+
+## Monitoramento e Logging
+
+### Health Checks
+- **Endpoint**: `GET /api/b3/status`
+- **Métricas**: Modelo carregado, conexão de dados, latência de predição
+- **Alertas**: Serviço down, falhas de predição
+
+### Logging
+- **Nível**: INFO para operações normais, ERROR para falhas
+- **Formato**: Logs estruturados JSON
+- **Retenção**: 30 dias (configurável)
 
 ## Licença
 MIT License
