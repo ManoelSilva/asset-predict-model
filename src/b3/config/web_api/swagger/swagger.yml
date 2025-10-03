@@ -4,7 +4,10 @@ info:
   description: API for B3 model training, prediction, and evaluation
   version: 1.0.0
 servers:
-  - url: http://localhost:5001
+  - description: Local server
+    url: http://localhost:5001
+  - description: EC2 server
+    url: http://PUBLIC_IP:5001
 paths:
   /api/b3/load-data:
     post:

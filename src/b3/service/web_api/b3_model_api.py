@@ -1,13 +1,15 @@
 import logging
+import os
+
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 from flask_swagger_ui import get_swaggerui_blueprint
-import os
+from waitress import serve
 
 from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
-from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.model.model_evaluation_service import B3ModelEvaluationService
+from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
 from b3.service.model.model_saving_service import B3ModelSavingService
 from b3.service.model.model_training_service import B3ModelTrainingService
 from b3.service.web_api.handler.api_handler import create_b3_api_handlers
@@ -75,6 +77,6 @@ class B3ModelAPI:
         self.app.route('/api/b3/predict', methods=['POST'])(self.handlers['predict'].predict_data_handler)
 
     def run(self, host=DEFAULT_API_HOST, port=DEFAULT_API_PORT, debug=False):
-        """Run the Flask application."""
+        """Run the Flask application with waitress for production."""
         logging.info(f"Starting B3 Training API on {host}:{port}")
-        self.app.run(host=host, port=port, debug=debug)
+        serve(self.app, host=host, port=port)
