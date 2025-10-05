@@ -267,7 +267,7 @@ A API do modelo integra com o frontend Angular:
 - **Retenção**: 30 dias (configurável)
 
 ## Licença
-MIT License
+[MIT License](LICENSE)
 
 ---
 [Read in English](README.md)
