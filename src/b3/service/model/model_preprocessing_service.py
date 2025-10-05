@@ -52,6 +52,51 @@ class B3ModelPreprocessingService:
         return X, df
 
     @staticmethod
+    def clean_prediction_data(x_prediction: DataFrame) -> DataFrame:
+        """
+        Clean prediction data by handling infinity and extreme values.
+        This method is specifically designed for prediction scenarios where
+        we cannot drop rows but need to handle problematic values.
+        
+        Args:
+            x_prediction (DataFrame): Feature data for prediction
+            
+        Returns:
+            DataFrame: Cleaned prediction data
+        """
+        logging.info("Cleaning prediction data...")
+
+        # Replace infinity values with NaN
+        x_prediction = x_prediction.replace([np.inf, -np.inf], np.nan)
+
+        # Check for any remaining NaN values
+        nan_columns = x_prediction.columns[x_prediction.isna().any()].tolist()
+        if nan_columns:
+            logging.warning(f"Found NaN values in columns: {nan_columns}")
+            # For prediction, we'll fill NaN with 0 or median values
+            # This is a fallback - ideally the API should provide clean data
+            for col in nan_columns:
+                if x_prediction[col].dtype in ['float64', 'float32']:
+                    x_prediction[col] = x_prediction[col].fillna(0.0)
+                else:
+                    x_prediction[col] = x_prediction[col].fillna(0)
+
+        # Check for extremely large values that might cause float32 overflow
+        max_float32 = np.finfo(np.float32).max
+        large_value_columns = []
+        for col in x_prediction.select_dtypes(include=[np.number]).columns:
+            if x_prediction[col].abs().max() > max_float32:
+                large_value_columns.append(col)
+                # Clip extreme values to prevent overflow
+                x_prediction[col] = np.clip(x_prediction[col], -max_float32, max_float32)
+                logging.warning(f"Clipped extreme values in column: {col}")
+
+        if large_value_columns:
+            logging.warning(f"Found extreme values in columns: {large_value_columns}")
+
+        return x_prediction
+
+    @staticmethod
     def generate_buy_signal_cluster(df: DataFrame):
         """
         Generates buy signal clusters based on technical indicators.

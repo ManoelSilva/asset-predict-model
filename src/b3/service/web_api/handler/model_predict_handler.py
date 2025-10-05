@@ -41,6 +41,7 @@ class ModelPredictHandler:
                     {'status': 'error', 'message': f'Error loading model from storage: {str(e)}'}), 500
         return model, model_source, None, None
 
+
     def _get_prediction_features(self, new_data):
         """Helper to extract and validate features for prediction."""
         features = [col for col in new_data.select_dtypes(include=['number']).columns if col != 'date']
@@ -60,6 +61,10 @@ class ModelPredictHandler:
                 'available_features': list(x_new.columns)
             }), 400
         x_prediction = x_new[available_features]
+
+        # Clean the prediction data using preprocessing service
+        x_prediction = self._preprocessing_service.clean_prediction_data(x_prediction)
+        
         return x_prediction, available_features, None, None
 
     def predict_data_handler(self):
@@ -134,6 +139,11 @@ class ModelPredictHandler:
                 )
                 return error_response, error_code
 
+            # Log data quality information before prediction
+            logging.info(f"Prediction data shape: {x_prediction.shape}")
+            logging.info(f"Data types: {x_prediction.dtypes.to_dict()}")
+            logging.info(f"Data ranges: {x_prediction.describe().to_dict()}")
+            
             predictions = model.predict(x_prediction)
             prediction_probs = model.predict_proba(x_prediction).tolist() if hasattr(model, 'predict_proba') else None
             feature_importance = model.feature_importances_.tolist() if hasattr(model, 'feature_importances_') else None
@@ -158,6 +168,25 @@ class ModelPredictHandler:
                 status='success'
             )
             return jsonify(resp)
+        except ValueError as e:
+            if "infinity" in str(e).lower() or "float32" in str(e).lower():
+                logging.error(f"Data quality issue in prediction: {str(e)}")
+                resp = {
+                    'status': 'error',
+                    'message': 'Data quality issue: Input contains infinity or values too large for processing. '
+                               'Please check the ticker data quality.',
+                    'technical_details': str(e)
+                }
+            else:
+                logging.error(f"Value error in prediction: {str(e)}")
+                resp = {'status': 'error', 'message': str(e)}
+            self._log_api_activity(
+                endpoint='predict_data_handler',
+                request_data=request.get_json() or {},
+                response_data=resp,
+                status='error'
+            )
+            return jsonify(resp), 400
         except Exception as e:
             logging.error(f"Error making predictions: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
