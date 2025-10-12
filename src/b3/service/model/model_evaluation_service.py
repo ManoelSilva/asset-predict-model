@@ -6,7 +6,8 @@ from datetime import datetime
 from asset_model_data_storage.data_storage_service import DataStorageService
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, mean_absolute_error, mean_squared_error
+import numpy as np
 
 from b3.service.data.db.evaluation.data_loader import EvaluationDataLoader
 from b3.service.model.plotter import B3DashboardPlotter
@@ -144,12 +145,12 @@ class B3ModelEvaluationService:
         # Generate visualization first
         visualization_path = self.generate_evaluation_visualization(df)
 
-        # Evaluate validation set
+        # Evaluate validation set (classification)
         validation_results = self.evaluate_model(
             model, X_val, y_val, "Validation", model_name, persist_results
         )
 
-        # Evaluate test set
+        # Evaluate test set (classification)
         test_results = self.evaluate_model(
             model, X_test, y_test, "Test", model_name, persist_results
         )
@@ -177,6 +178,27 @@ class B3ModelEvaluationService:
             'test': test_results,
             'visualization_path': visualization_path
         }
+
+    def evaluate_regression(self, y_true_prices: Series | np.ndarray, y_pred_prices: Series | np.ndarray) -> dict:
+        """
+        Evaluate regression predictions with MAE, RMSE, and MAPE.
+
+        Args:
+            y_true_prices: Ground-truth prices
+            y_pred_prices: Predicted prices
+
+        Returns:
+            dict: { mae, rmse, mape }
+        """
+        y_true = np.asarray(y_true_prices, dtype=float)
+        y_pred = np.asarray(y_pred_prices, dtype=float)
+        mae = mean_absolute_error(y_true, y_pred)
+        rmse = mean_squared_error(y_true, y_pred, squared=False)
+        # Avoid divide-by-zero in MAPE
+        eps = 1e-8
+        mape = np.mean(np.abs((y_true - y_pred) / (np.maximum(np.abs(y_true), eps)))) * 100.0
+        logging.info(f"Regression metrics -> MAE: {mae:.6f}, RMSE: {rmse:.6f}, MAPE: {mape:.4f}%")
+        return {"mae": float(mae), "rmse": float(rmse), "mape": float(mape)}
 
     def get_evaluation_history(self, model_name: str = None) -> DataFrame:
         """
