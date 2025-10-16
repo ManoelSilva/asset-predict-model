@@ -1,5 +1,7 @@
 import os
+
 import requests
+
 
 class AssetApiClient:
     BASE_URL = os.getenv("ASSET_API_BASE_URL", "http://localhost:5002/asset/")

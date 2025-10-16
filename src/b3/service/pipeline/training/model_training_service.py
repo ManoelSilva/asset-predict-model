@@ -1,9 +1,10 @@
 import logging
+from typing import cast
+
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV, train_test_split
-from typing import cast
 
 
 class B3ModelTrainingService:
@@ -50,7 +51,7 @@ class B3ModelTrainingService:
             n_jobs: Number of parallel jobs
             
         Returns:
-            RandomForestClassifier: Best tuned model
+            RandomForestClassifier: Best tuned pipeline
         """
         logging.info("Starting hyperparameter tuning...")
 
@@ -75,7 +76,7 @@ class B3ModelTrainingService:
 
     def train_model(self, X_train: DataFrame, y_train: Series, n_jobs: int = 5) -> RandomForestClassifier:
         """
-        Complete model training pipeline including hyperparameter tuning.
+        Complete pipeline training pipeline including hyperparameter tuning.
         
         Args:
             X_train: Training features
@@ -83,9 +84,9 @@ class B3ModelTrainingService:
             n_jobs: Number of parallel jobs
             
         Returns:
-            RandomForestClassifier: Trained model
+            RandomForestClassifier: Trained pipeline
         """
-        logging.info("Starting model training...")
+        logging.info("Starting pipeline training...")
         model = self.tune_hyperparameters(X_train, y_train, n_jobs)
         logging.info("Model training completed")
         return cast(RandomForestClassifier, model)

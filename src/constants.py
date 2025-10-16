@@ -20,7 +20,7 @@ DEFAULT_TEST_SIZE = 0.8
 DEFAULT_VAL_SIZE = 0.2
 DEFAULT_N_JOBS = 5
 
-# Feature set for the B3 model
+# Feature set for the B3 pipeline
 FEATURE_SET = [
     'rolling_volatility_5',
     'moving_avg_10',

@@ -10,7 +10,7 @@ from sklearn.ensemble import RandomForestClassifier
 DEFAULT_MODEL_NAME = "b3_model.joblib"
 
 
-class B3ModelSavingService:
+class RandomForestPersistService:
     """
     Service responsible for saving and loading trained B3 models.
     """

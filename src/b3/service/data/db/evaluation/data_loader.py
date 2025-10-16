@@ -9,7 +9,7 @@ import pandas as pd
 
 class EvaluationDataLoader:
     """
-    Data loader for managing model evaluation results in DuckDB.
+    Data loader for managing pipeline evaluation results in DuckDB.
     Handles persistence of evaluation metrics, metadata, and visualization paths.
     """
 
@@ -65,11 +65,11 @@ class EvaluationDataLoader:
     def save_evaluation(self, evaluation_id: str, model_name: str, dataset_type: str,
                         evaluation_results: Dict[str, Any], visualization_path: str = None) -> bool:
         """
-        Save model evaluation results to the database.
+        Save pipeline evaluation results to the database.
         
         Args:
             evaluation_id (str): Unique identifier for this evaluation
-            model_name (str): Name of the model being evaluated
+            model_name (str): Name of the pipeline being evaluated
             dataset_type (str): Type of dataset ('validation' or 'test')
             evaluation_results (dict): Classification report results from sklearn
             visualization_path (str, optional): Path to saved visualization
@@ -78,7 +78,7 @@ class EvaluationDataLoader:
             bool: True if successful, False otherwise
         """
         try:
-            logging.info(f"Saving evaluation {evaluation_id} for model {model_name} on {dataset_type} set...")
+            logging.info(f"Saving evaluation {evaluation_id} for pipeline {model_name} on {dataset_type} set...")
 
             # Extract metrics from classification report
             metrics = self._extract_metrics(evaluation_results)
@@ -166,15 +166,15 @@ class EvaluationDataLoader:
 
     def fetch_by_model(self, model_name: str) -> pd.DataFrame:
         """
-        Fetch all evaluations for a specific model.
+        Fetch all evaluations for a specific pipeline.
         
         Args:
-            model_name (str): Name of the model
+            model_name (str): Name of the pipeline
             
         Returns:
-            pd.DataFrame: Evaluation data for the model
+            pd.DataFrame: Evaluation data for the pipeline
         """
-        logging.info(f"Fetching evaluations for model {model_name}...")
+        logging.info(f"Fetching evaluations for pipeline {model_name}...")
         query = f"SELECT * FROM {self.table_name} WHERE model_name = ?"
         return self.conn.execute(query, (model_name,)).fetchdf()
 
@@ -212,15 +212,15 @@ class EvaluationDataLoader:
 
     def fetch_latest_by_model(self, model_name: str) -> pd.DataFrame:
         """
-        Fetch the latest evaluation for a specific model.
+        Fetch the latest evaluation for a specific pipeline.
         
         Args:
-            model_name (str): Name of the model
+            model_name (str): Name of the pipeline
             
         Returns:
-            pd.DataFrame: Latest evaluation data for the model
+            pd.DataFrame: Latest evaluation data for the pipeline
         """
-        logging.info(f"Fetching latest evaluation for model {model_name}...")
+        logging.info(f"Fetching latest evaluation for pipeline {model_name}...")
         query = f"""
         SELECT * FROM {self.table_name} 
         WHERE model_name = ? 

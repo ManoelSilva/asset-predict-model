@@ -1,10 +1,11 @@
 import logging
+
 from pandas import DataFrame
 
 from b3.service.data.db.b3_featured.data_loader import B3DataLoader
 
 
-class B3DataLoadingService:
+class DataLoadingService:
     """
     Service responsible for loading and fetching B3 market data.
     """

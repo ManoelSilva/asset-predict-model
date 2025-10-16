@@ -104,8 +104,9 @@ A Flask-based REST API exposes all training and prediction stages as endpoints. 
 ## Usage Examples
 
 ### Using the Python API
+
 ```python
-from b3.service.model import B3Model
+from b3.service.pipeline import B3Model
 
 model = B3Model()
 model.train(model_dir="models", n_jobs=5, test_size=0.2, val_size=0.2)
@@ -113,15 +114,16 @@ predictions = model.predict(new_data, model_dir="models")
 ```
 
 ### Using Individual Services
-```python
-from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
-from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
-from b3.service.model.model_training_service import B3ModelTrainingService
 
-data_service = B3DataLoadingService()
+```python
+from b3.service.data.db.b3_featured.data_loading_service import DataLoadingService
+from b3.service.pipeline.model_preprocessing_service import PreprocessingService
+from b3.service.pipeline.training.model_training_service import B3ModelTrainingService
+
+data_service = DataLoadingService()
 df = data_service.load_data()
 
-preprocessing_service = B3ModelPreprocessingService()
+preprocessing_service = PreprocessingService()
 X, df_processed, y = preprocessing_service.preprocess_data(df)
 
 training_service = B3ModelTrainingService()
@@ -206,13 +208,13 @@ sudo MOTHERDUCK_TOKEN=your_token EC2_HOST=your_ip bash deploy_asset_predict_mode
 
 ```bash
 # Check service status
-sudo systemctl status asset-predict-model
+sudo systemctl status asset-predict-pipeline
 
 # View logs
-sudo journalctl -u asset-predict-model -f
+sudo journalctl -u asset-predict-pipeline -f
 
 # Restart service
-sudo systemctl restart asset-predict-model
+sudo systemctl restart asset-predict-pipeline
 ```
 
 ## Model Versioning and Persistence

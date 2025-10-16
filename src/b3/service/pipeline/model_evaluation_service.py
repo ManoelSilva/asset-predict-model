@@ -3,14 +3,14 @@ import os
 import uuid
 from datetime import datetime
 
+import numpy as np
 from asset_model_data_storage.data_storage_service import DataStorageService
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator
 from sklearn.metrics import classification_report, mean_absolute_error, mean_squared_error
-import numpy as np
 
 from b3.service.data.db.evaluation.data_loader import EvaluationDataLoader
-from b3.service.model.plotter import B3DashboardPlotter
+from b3.service.pipeline.plotter import B3DashboardPlotter
 
 
 class B3ModelEvaluationService:
@@ -30,7 +30,8 @@ class B3ModelEvaluationService:
         self.evaluation_data_loader = evaluation_data_loader or EvaluationDataLoader()
         self.plotter = B3DashboardPlotter(storage_service)
 
-    def _generate_evaluation_id(self, model_name: str, dataset_type: str) -> str:
+    @staticmethod
+    def _generate_evaluation_id(model_name: str, dataset_type: str) -> str:
         """
         Generate a unique evaluation ID.
         
@@ -179,7 +180,8 @@ class B3ModelEvaluationService:
             'visualization_path': visualization_path
         }
 
-    def evaluate_regression(self, y_true_prices: Series | np.ndarray, y_pred_prices: Series | np.ndarray) -> dict:
+    @staticmethod
+    def evaluate_regression(y_true_prices: Series | np.ndarray, y_pred_prices: Series | np.ndarray) -> dict:
         """
         Evaluate regression predictions with MAE, RMSE, and MAPE.
 

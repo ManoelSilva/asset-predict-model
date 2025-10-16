@@ -1,40 +1,53 @@
 import logging
 
 import pandas as pd
+from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
-from b3.service.web_api.api_client import AssetApiClient
+from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.web_api.asset_api_client import AssetApiClient
 from constants import FEATURE_SET
 
 
 class ModelPredictHandler:
-    def __init__(self, log_api_activity, data_loading_service, preprocessing_service, model_saving_service,
-                 pipeline_state, deserialize_model):
-        self._log_api_activity = log_api_activity
-        self._data_loading_service = data_loading_service
+    def __init__(self, preprocessing_service, log_api_activity, pipeline_state, deserialize_model,
+                 storage_service=None):
         self._preprocessing_service = preprocessing_service
-        self._model_saving_service = model_saving_service
+        self._log_api_activity = log_api_activity
         self._pipeline_state = pipeline_state
         self._deserialize_model = deserialize_model
+        self._storage_service = storage_service or DataStorageService()
 
-    def _load_model(self):
-        """Helper to load model from pipeline or storage."""
+    def _load_model(self, model_type='rf'):
+        """Helper to load model from pipeline or storage using factory pattern."""
         model = None
         model_source = None
+
         if 'trained_model' in self._pipeline_state:
             model = self._deserialize_model(self._pipeline_state['trained_model'])
             model_source = 'pipeline'
         else:
             try:
-                if self._model_saving_service.model_exists():
-                    model_path = self._model_saving_service.get_model_relative_path()
-                    model = self._model_saving_service.load_model(model_path)
+                model_instance = ModelFactory.get_model(model_type)
+                # Get persist service at runtime with storage service
+                saving_service = ModelFactory.get_persist_service(model_type, self._storage_service)
+
+                # Check if model exists and load it
+                if saving_service.model_exists():
+                    model_path = saving_service.get_model_relative_path()
+                    model = model_instance.load_model(model_path)
                     model_source = 'storage'
-                    logging.info(f"Loaded model from storage: {model_path}")
+                    logging.info(f"Loaded {model_type} model from storage: {model_path}")
                 else:
                     return None, None, jsonify({'status': 'error',
-                                                'message': 'No trained model found in pipeline or storage. '
+                                                'message': f'No trained {model_type} model found in storage. '
                                                            'Please train model first.'}), 400
+            except ValueError as e:
+                # Handle unknown model type
+                available_types = ModelFactory.get_available_models()
+                return None, None, jsonify({'status': 'error',
+                                            'message': f'Unknown model type: {model_type}. '
+                                                       f'Available types: {available_types}'}), 400
             except Exception as e:
                 logging.error(f"Error loading model from storage: {str(e)}")
                 return None, None, jsonify(
@@ -62,18 +75,19 @@ class ModelPredictHandler:
             }), 400
         x_prediction = x_new[available_features]
 
-        # Clean the prediction data using preprocessing service
+        # Clean the prediction data using injected preprocessing service
         x_prediction = self._preprocessing_service.clean_prediction_data(x_prediction)
         
         return x_prediction, available_features, None, None
 
     def predict_data_handler(self):
-        """Make predictions using the trained model."""
+        """Make predictions using the trained pipeline."""
         try:
             data = request.get_json() or {}
             ticker = data.get('ticker')
+            model_type = data.get('model_type', 'rf')  # Default to Random Forest for backward compatibility
 
-            model, model_source, error_response, error_code = self._load_model()
+            model, model_source, error_response, error_code = self._load_model(model_type)
             if error_response:
                 resp = error_response.get_json() if hasattr(error_response, 'get_json') else str(error_response)
                 self._log_api_activity(
@@ -149,6 +163,13 @@ class ModelPredictHandler:
             feature_importance = model.feature_importances_.tolist() if hasattr(model, 'feature_importances_') else None
 
             logging.info(f"Predicted actions for ticker {ticker}: {predictions}")
+
+            # Get model type name for response
+            model_type_name = type(model).__name__
+            if hasattr(model, 'model') and hasattr(model.model, '__class__'):
+                # For wrapped models (like B3KerasMTLModel), get the actual model type
+                model_type_name = type(model.model).__name__
+
             resp = {
                 'status': 'success',
                 'message': f'Predictions generated successfully for ticker: {ticker}',
@@ -158,7 +179,8 @@ class ModelPredictHandler:
                 'feature_importance': feature_importance,
                 'input_shape': x_prediction.shape,
                 'features_used': available_features,
-                'model_type': type(model).__name__,
+                'model_type': model_type_name,
+                'requested_model_type': model_type,
                 'model_source': model_source
             }
             self._log_api_activity(

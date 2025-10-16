@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from b3.service.model.model import B3Model
+from b3.service.pipeline.model.rf.rf_model import RandomForestModel
 
 logging.basicConfig(level=logging.INFO)
 
@@ -11,7 +11,7 @@ load_dotenv()
 
 
 class AssetPredictApp(object):
-    def __init__(self, b3_model: B3Model) -> None:
+    def __init__(self, b3_model: RandomForestModel) -> None:
         self._b3_model = b3_model
 
     def train(self, n_jobs: int = 5):

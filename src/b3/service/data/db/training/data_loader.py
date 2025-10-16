@@ -118,15 +118,15 @@ class TrainingRequestDataLoader:
 
     def fetch_by_model(self, model_name: str) -> pd.DataFrame:
         """
-        Fetch all training requests for a specific model.
+        Fetch all training requests for a specific pipeline.
         
         Args:
-            model_name (str): Name of the model
+            model_name (str): Name of the pipeline
             
         Returns:
-            pd.DataFrame: Training request data for the model
+            pd.DataFrame: Training request data for the pipeline
         """
-        logging.info(f"Fetching training requests for model {model_name}...")
+        logging.info(f"Fetching training requests for pipeline {model_name}...")
         query = f"SELECT * FROM {self.table_name} WHERE model_name = ?"
         return self.conn.execute(query, (model_name,)).fetchdf()
 
@@ -182,15 +182,15 @@ class TrainingRequestDataLoader:
 
     def fetch_latest_by_model(self, model_name: str) -> pd.DataFrame:
         """
-        Fetch the latest training request for a specific model.
+        Fetch the latest training request for a specific pipeline.
         
         Args:
-            model_name (str): Name of the model
+            model_name (str): Name of the pipeline
             
         Returns:
-            pd.DataFrame: Latest training request data for the model
+            pd.DataFrame: Latest training request data for the pipeline
         """
-        logging.info(f"Fetching latest training request for model {model_name}...")
+        logging.info(f"Fetching latest training request for pipeline {model_name}...")
         query = f"""
         SELECT * FROM {self.table_name} 
         WHERE model_name = ? 

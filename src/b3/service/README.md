@@ -99,9 +99,9 @@ The `B3TrainingAPI` class provides a Flask-based REST API that exposes all train
 ### Using the Refactored B3Model Class
 
 ```python
-from b3.service.model import B3Model
+from b3.service.pipeline import B3Model
 
-# Initialize model (now uses service classes internally)
+# Initialize pipeline (now uses service classes internally)
 model = B3Model()
 
 # Train using the new modular approach
@@ -114,19 +114,19 @@ predictions = model.predict(new_data, model_dir="models")
 ### Using Individual Services
 
 ```python
-from b3.service.data.db.b3_featured.data_loading_service import B3DataLoadingService
-from b3.service.model.model_preprocessing_service import B3ModelPreprocessingService
-from b3.service.model.model_training_service import B3ModelTrainingService
+from b3.service.data.db.b3_featured.data_loading_service import DataLoadingService
+from b3.service.pipeline.model_preprocessing_service import PreprocessingService
+from b3.service.pipeline.training.model_training_service import B3ModelTrainingService
 
 # Load data
-data_service = B3DataLoadingService()
+data_service = DataLoadingService()
 df = data_service.load_data()
 
 # Preprocess data
-preprocessing_service = B3ModelPreprocessingService()
+preprocessing_service = PreprocessingService()
 X, df_processed, y = preprocessing_service.preprocess_data(df)
 
-# Train model
+# Train pipeline
 training_service = B3ModelTrainingService()
 X_train, X_val, X_test, y_train, y_val, y_test = training_service.split_data(X, y)
 model = training_service.train_model(X_train, y_train)

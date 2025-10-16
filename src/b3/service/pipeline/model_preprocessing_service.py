@@ -7,7 +7,7 @@ from b3.exception.model import B3ModelProcessException
 from constants import FEATURE_SET
 
 
-class B3ModelPreprocessingService:
+class PreprocessingService:
     """
     Service responsible for preprocessing B3 market data including feature validation,
     data cleaning, and target label generation.
