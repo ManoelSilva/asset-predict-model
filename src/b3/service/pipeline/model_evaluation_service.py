@@ -65,7 +65,13 @@ class B3ModelEvaluationService:
         logging.info(f"Evaluating model on {set_name} set...")
 
         y_pred = model.predict(X)
-        report = classification_report(y, y_pred, target_names=['buy', 'sell', 'hold'], output_dict=True)
+        report = classification_report(
+            y,
+            y_pred,
+            target_names=['buy', 'sell', 'hold'],
+            output_dict=True,
+            zero_division=0
+        )
 
         print(f"\n{classification_report(y, y_pred, target_names=['buy', 'sell', 'hold'])}")
         logging.info(f"Model evaluation completed on {set_name} set")
@@ -195,7 +201,8 @@ class B3ModelEvaluationService:
         y_true = np.asarray(y_true_prices, dtype=float)
         y_pred = np.asarray(y_pred_prices, dtype=float)
         mae = mean_absolute_error(y_true, y_pred)
-        rmse = mean_squared_error(y_true, y_pred, squared=False)
+        # Compute RMSE without relying on the 'squared' parameter for wider compatibility
+        rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
         # Avoid divide-by-zero in MAPE
         eps = 1e-8
         mape = np.mean(np.abs((y_true - y_pred) / (np.maximum(np.abs(y_true), eps)))) * 100.0

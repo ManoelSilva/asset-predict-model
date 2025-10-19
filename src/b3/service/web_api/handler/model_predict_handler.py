@@ -10,6 +10,19 @@ from constants import FEATURE_SET
 
 
 class ModelPredictHandler:
+    """
+    Handler for making predictions using trained models.
+    
+    This handler supports both Random Forest and LSTM models:
+    - Random Forest: Expects single-row feature data (n_samples, n_features)
+    - LSTM: Expects sequence data (n_samples, lookback, n_features) where lookback=32
+    
+    For LSTM models, the handler will:
+    1. Try to build sequences from historical data in pipeline_state if available
+    2. If no historical data is available, return an informative error message
+    3. Suggest using Random Forest for single-point predictions
+    """
+    
     def __init__(self, preprocessing_service, log_api_activity, pipeline_state, deserialize_model,
                  storage_service=None):
         self._preprocessing_service = preprocessing_service
@@ -54,8 +67,7 @@ class ModelPredictHandler:
                     {'status': 'error', 'message': f'Error loading model from storage: {str(e)}'}), 500
         return model, model_source, None, None
 
-
-    def _get_prediction_features(self, new_data):
+    def _get_prediction_features(self, new_data, model_type='rf'):
         """Helper to extract and validate features for prediction."""
         features = [col for col in new_data.select_dtypes(include=['number']).columns if col != 'date']
         x_new = new_data[features]
@@ -79,6 +91,169 @@ class ModelPredictHandler:
         x_prediction = self._preprocessing_service.clean_prediction_data(x_prediction)
         
         return x_prediction, available_features, None, None
+
+    def _get_lstm_expected_features(self):
+        """
+        Get the expected features for LSTM prediction, matching training features.
+        
+        Returns:
+            List of feature names that should be used for LSTM prediction
+        """
+        if 'X_features' in self._pipeline_state:
+            # Use features from training pipeline state
+            expected_features = list(pd.DataFrame(self._pipeline_state['X_features']).columns)
+            logging.info(f"Using features from pipeline state for LSTM prediction: {expected_features}")
+        else:
+            # Fallback to FEATURE_SET (same as training)
+            expected_features = FEATURE_SET
+            logging.info(f"Using FEATURE_SET for LSTM prediction: {expected_features}")
+
+        return expected_features
+
+    def _align_features_for_lstm(self, data_df, expected_features, data_source="unknown"):
+        """
+        Align features in the data to match training features for LSTM prediction.
+        
+        Args:
+            data_df: DataFrame containing the data
+            expected_features: List of expected feature names from training
+            data_source: String describing the data source for logging
+            
+        Returns:
+            Tuple of (aligned_features, missing_features, validation_warnings)
+        """
+        # Filter to only include features that exist in data and match training features
+        available_features = [f for f in expected_features if f in data_df.columns]
+        missing_features = set(expected_features) - set(available_features)
+
+        if missing_features:
+            logging.warning(f"Missing features for LSTM prediction from {data_source}: {missing_features}")
+
+        # Ensure we have numeric features from the expected feature set
+        numeric_features = data_df[available_features].select_dtypes(include=['number']).columns
+        if len(numeric_features) == 0:
+            logging.warning(f"No numeric features found in {data_source} data from expected feature set")
+            return None, missing_features, ["No numeric features available"]
+
+        # Validate feature count matches model expectations
+        validation_warnings = []
+        if len(numeric_features) != len(expected_features):
+            warning_msg = f"Feature count mismatch in {data_source} data: expected {len(expected_features)}, got {len(numeric_features)}. Available numeric features: {list(numeric_features)}"
+            logging.warning(warning_msg)
+            validation_warnings.append(warning_msg)
+
+        # Ensure features are in the same order as training
+        aligned_features = [f for f in expected_features if f in numeric_features]
+
+        return aligned_features, missing_features, validation_warnings
+
+    def _prepare_lstm_prediction_data(self, ticker, model, lookback=32):
+        """
+        Prepare data for LSTM prediction by building sequences from historical data.
+        This method checks multiple sources for historical data:
+        1. Pipeline state (processed data)
+        2. Asset API historical data
+        3. Raw data in pipeline state
+        
+        Args:
+            ticker: Ticker symbol
+            model: LSTM model instance
+            lookback: Number of timesteps for sequence building
+            
+        Returns:
+            Tuple of (X_seq, error_response, error_code) or (None, None, None) if no historical data
+        """
+        # First, try to get historical data from pipeline state
+        if 'processed_data' in self._pipeline_state:
+            df_processed = pd.DataFrame(self._pipeline_state['processed_data'])
+
+            # Filter data for the specific ticker
+            if 'ticker' in df_processed.columns:
+                ticker_data = df_processed[df_processed['ticker'] == ticker].copy()
+
+                if len(ticker_data) >= lookback:
+                    # Sort by date to ensure proper sequence
+                    if 'date' in ticker_data.columns:
+                        ticker_data = ticker_data.sort_values('date')
+                    elif 'datetime' in ticker_data.columns:
+                        ticker_data = ticker_data.sort_values('datetime')
+
+                    # Get the last lookback rows
+                    recent_data = ticker_data.tail(lookback)
+
+                    # Get expected features and align them with available data
+                    expected_features = self._get_lstm_expected_features()
+                    feature_cols, missing_features, validation_warnings = self._align_features_for_lstm(
+                        recent_data, expected_features, "pipeline state"
+                    )
+
+                    if feature_cols is None:
+                        logging.error(f"Could not align features for LSTM prediction from pipeline state")
+                        return None, None, None
+
+                    # Build sequence
+                    X_seq = recent_data[feature_cols].values.astype('float32')
+                    X_seq = X_seq.reshape(1, lookback, len(feature_cols))  # Add batch dimension
+
+                    logging.info(
+                        f"Built LSTM sequence from pipeline state for {ticker}: shape {X_seq.shape}, features: {feature_cols}")
+                    if validation_warnings:
+                        logging.warning(f"Validation warnings for {ticker}: {validation_warnings}")
+                    return X_seq, None, None
+
+        # If no pipeline data, try to fetch historical data from Asset API
+        logging.info(f"Attempting to fetch historical data from Asset API for ticker {ticker}")
+        historical_data, api_error = AssetApiClient.fetch_historical_data(ticker)
+
+        if historical_data and len(historical_data) >= lookback:
+            try:
+                # Convert API data to DataFrame
+                df_historical = pd.DataFrame(historical_data)
+
+                # Sort by date if available
+                date_cols = ['date', 'datetime', 'timestamp', 'created_at', 'updated_at']
+                for date_col in date_cols:
+                    if date_col in df_historical.columns:
+                        df_historical = df_historical.sort_values(date_col)
+                        break
+
+                # Get the last lookback rows
+                recent_data = df_historical.tail(lookback)
+
+                # Get expected features and align them with available data
+                expected_features = self._get_lstm_expected_features()
+                feature_cols, missing_features, validation_warnings = self._align_features_for_lstm(
+                    recent_data, expected_features, "Asset API"
+                )
+
+                if feature_cols is None:
+                    logging.error(f"Could not align features for LSTM prediction from Asset API for {ticker}")
+                    return None, None, None
+
+                # Build sequence with aligned features
+                X_seq = recent_data[feature_cols].values.astype('float32')
+                X_seq = X_seq.reshape(1, lookback, len(feature_cols))  # Add batch dimension
+
+                logging.info(
+                    f"Built LSTM sequence from Asset API for {ticker}: shape {X_seq.shape}, features: {feature_cols}")
+                if validation_warnings:
+                    logging.warning(f"Validation warnings for {ticker}: {validation_warnings}")
+                return X_seq, None, None
+
+            except Exception as e:
+                logging.error(f"Error processing historical data from API: {str(e)}")
+                return None, None, None
+
+        # Check if we have raw data that could be processed
+        if 'raw_data' in self._pipeline_state:
+            logging.info(f"Found raw data in pipeline state, but no processed data for LSTM sequence building")
+
+        # No historical data available from any source
+        logging.warning(f"No historical data available for LSTM prediction of ticker {ticker}")
+        if api_error:
+            logging.warning(f"Asset API error: {api_error}")
+
+        return None, None, None
 
     def predict_data_handler(self):
         """Make predictions using the trained pipeline."""
@@ -142,7 +317,96 @@ class ModelPredictHandler:
                 )
                 return jsonify(resp), 400
 
-            x_prediction, available_features, error_response, error_code = self._get_prediction_features(new_data)
+            # Handle LSTM models differently - they need sequences, not single rows
+            if model_type in ['lstm', 'lstm_mtl']:
+                # Try to build sequence from historical data if available
+                X_seq, seq_error, seq_code = self._prepare_lstm_prediction_data(ticker, model)
+
+                if X_seq is not None:
+                    # We have historical data, make LSTM prediction
+                    logging.info(f"Making LSTM prediction with sequence shape: {X_seq.shape}")
+                    predictions = model.predict(X_seq)
+
+                    # Get prediction probabilities if available
+                    prediction_probs = None
+                    if hasattr(model, 'predict_proba'):
+                        prediction_probs = model.predict_proba(X_seq).tolist()
+                    elif hasattr(model, 'model') and hasattr(model.model, 'predict'):
+                        # For LSTM models, get probabilities from the underlying Keras model
+                        try:
+                            keras_pred = model.model.predict(X_seq, verbose=0)
+                            if isinstance(keras_pred, dict) and 'action' in keras_pred:
+                                prediction_probs = keras_pred['action'].tolist()
+                        except Exception as e:
+                            logging.warning(f"Could not get prediction probabilities: {e}")
+
+                    # Get model type name for response
+                    model_type_name = type(model).__name__
+                    if hasattr(model, 'model') and hasattr(model.model, '__class__'):
+                        model_type_name = type(model.model).__name__
+
+                    resp = {
+                        'status': 'success',
+                        'message': f'LSTM predictions generated successfully for ticker: {ticker}',
+                        'ticker': ticker,
+                        'predictions': predictions.tolist() if hasattr(predictions, 'tolist') else predictions,
+                        'prediction_probabilities': prediction_probs,
+                        'input_shape': X_seq.shape,
+                        'model_type': model_type_name,
+                        'requested_model_type': model_type,
+                        'model_source': model_source,
+                        'sequence_length': X_seq.shape[1],
+                        'features_count': X_seq.shape[2]
+                    }
+                    self._log_api_activity(
+                        endpoint='predict_data_handler',
+                        request_data=data,
+                        response_data=resp,
+                        status='success'
+                    )
+                    return jsonify(resp)
+                else:
+                    # No historical data available, return informative error with steps to fix
+                    pipeline_status = {
+                        'has_raw_data': 'raw_data' in self._pipeline_state,
+                        'has_processed_data': 'processed_data' in self._pipeline_state,
+                        'has_trained_model': 'trained_model' in self._pipeline_state
+                    }
+
+                    resp = {
+                        'status': 'error',
+                        'message': f'LSTM models require historical data (lookback window of 32 timesteps) for prediction. '
+                                   f'No historical data is available from pipeline state or Asset API. '
+                                   f'Please ensure your Asset API supports historical data endpoints, '
+                                   f'load and preprocess historical data first, or use Random Forest for single-point predictions.',
+                        'model_type': model_type,
+                        'required_data': 'Historical sequence of 32 timesteps',
+                        'available_data': 'Single current data point',
+                        'pipeline_status': pipeline_status,
+                        'data_sources_checked': [
+                            'Pipeline state processed_data',
+                            'Asset API historical endpoints'
+                        ],
+                        'solutions': [
+                            'Use model_type="rf" for single-point predictions',
+                            'Ensure Asset API supports historical data endpoints',
+                            'Run POST /api/b3/load-data to load historical data',
+                            'Run POST /api/b3/preprocess-data to preprocess data',
+                            'Then retry LSTM prediction',
+                            'Or run POST /api/b3/complete-training with model_type="lstm"'
+                        ],
+                        'asset_api_endpoint': f'{AssetApiClient.BASE_URL}{ticker}/history?days=32'
+                    }
+                    self._log_api_activity(
+                        endpoint='predict_data_handler',
+                        request_data=data,
+                        response_data=resp,
+                        status='error'
+                    )
+                    return jsonify(resp), 400
+
+            x_prediction, available_features, error_response, error_code = self._get_prediction_features(new_data,
+                                                                                                         model_type)
             if error_response:
                 resp = error_response.get_json() if hasattr(error_response, 'get_json') else str(error_response)
                 self._log_api_activity(
