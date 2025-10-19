@@ -61,6 +61,12 @@ class TrainingRequestDataLoader:
         logging.info(f"Creating table {self.table_name} if not exists...")
         self.conn.execute(create_table_sql)
 
+    def _base_select(self) -> str:
+        """
+        Base SELECT clause used across fetch methods to avoid duplication.
+        """
+        return f"SELECT * FROM {self.table_name}"
+
     def log_api_activity(self, endpoint: str, request_data: dict, response_data: dict, status: str,
                          error_message: str = None) -> bool:
         """
@@ -100,7 +106,7 @@ class TrainingRequestDataLoader:
             pd.DataFrame: All training request data
         """
         logging.info(f"Fetching all data from {self.table_name}...")
-        return self.conn.execute(f"SELECT * FROM {self.table_name}").fetchdf()
+        return self.conn.execute(self._base_select()).fetchdf()
 
     def fetch_by_request_id(self, request_id: str) -> pd.DataFrame:
         """
@@ -113,7 +119,7 @@ class TrainingRequestDataLoader:
             pd.DataFrame: Training request data
         """
         logging.info(f"Fetching training request {request_id}...")
-        query = f"SELECT * FROM {self.table_name} WHERE request_id = ?"
+        query = f"{self._base_select()} WHERE request_id = ?"
         return self.conn.execute(query, (request_id,)).fetchdf()
 
     def fetch_by_model(self, model_name: str) -> pd.DataFrame:
@@ -127,7 +133,7 @@ class TrainingRequestDataLoader:
             pd.DataFrame: Training request data for the pipeline
         """
         logging.info(f"Fetching training requests for pipeline {model_name}...")
-        query = f"SELECT * FROM {self.table_name} WHERE model_name = ?"
+        query = f"{self._base_select()} WHERE model_name = ?"
         return self.conn.execute(query, (model_name,)).fetchdf()
 
     def fetch_by_status(self, status: TrainingStatus) -> pd.DataFrame:
@@ -141,7 +147,7 @@ class TrainingRequestDataLoader:
             pd.DataFrame: Training request data with specified status
         """
         logging.info(f"Fetching training requests with status {status.value}...")
-        query = f"SELECT * FROM {self.table_name} WHERE status = ?"
+        query = f"{self._base_select()} WHERE status = ?"
         return self.conn.execute(query, (status.value,)).fetchdf()
 
     def fetch_pending_requests(self) -> pd.DataFrame:
@@ -174,10 +180,7 @@ class TrainingRequestDataLoader:
             pd.DataFrame: Training request data within date range
         """
         logging.info(f"Fetching training requests from {start_date} to {end_date}...")
-        query = f"""
-        SELECT * FROM {self.table_name} 
-        WHERE DATE(request_timestamp) >= ? AND DATE(request_timestamp) <= ?
-        """
+        query = f"{self._base_select()} WHERE DATE(request_timestamp) >= ? AND DATE(request_timestamp) <= ?"
         return self.conn.execute(query, (start_date, end_date)).fetchdf()
 
     def fetch_latest_by_model(self, model_name: str) -> pd.DataFrame:
@@ -191,12 +194,10 @@ class TrainingRequestDataLoader:
             pd.DataFrame: Latest training request data for the pipeline
         """
         logging.info(f"Fetching latest training request for pipeline {model_name}...")
-        query = f"""
-        SELECT * FROM {self.table_name} 
-        WHERE model_name = ? 
-        ORDER BY request_timestamp DESC 
-        LIMIT 1
-        """
+        query = (
+            f"{self._base_select()} WHERE model_name = ? "
+            f"ORDER BY request_timestamp DESC LIMIT 1"
+        )
         return self.conn.execute(query, (model_name,)).fetchdf()
 
     def get_training_summary(self) -> pd.DataFrame:

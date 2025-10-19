@@ -1,19 +1,25 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
+from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.pipeline.model.manager import ModelManagerService
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE, DEFAULT_N_JOBS, \
     MODEL_STORAGE_KEY
 
 
 class CompleteTrainingHandler:
-    def __init__(self, data_loading_service, preprocessing_service, pipeline_state, log_api_activity, serialize_model):
+    def __init__(self, data_loading_service, preprocessing_service, pipeline_state, log_api_activity, serialize_model,
+                 storage_service=None):
         self._data_loading_service = data_loading_service
         self._preprocessing_service = preprocessing_service
         self._pipeline_state = pipeline_state
         self._log_api_activity = log_api_activity
         self._serialize_model = serialize_model
+        self._storage_service = storage_service or DataStorageService()
+        self._model_manager_service = ModelManagerService(self._storage_service)
         self._executor = ThreadPoolExecutor(max_workers=1)
 
     def complete_training_handler(self):
@@ -68,11 +74,7 @@ class CompleteTrainingHandler:
     def _run_complete_training_pipeline(self, model_dir, n_jobs, test_size, val_size, model_type,
                                         lookback, horizon, epochs, batch_size, lr, units, dropout, price_col):
         try:
-            # Use injected services and create storage service at runtime
-            from b3.service.pipeline.model.factory import ModelFactory
-            from asset_model_data_storage.data_storage_service import DataStorageService
-
-            storage_service = DataStorageService()
+            # Use injected services
 
             df = self._data_loading_service.load_data()
             self._pipeline_state['raw_data'] = df.to_dict('records')
@@ -82,12 +84,7 @@ class CompleteTrainingHandler:
             self._pipeline_state['y_targets'] = y.to_dict()
             self._pipeline_state['processed_data'] = df_processed.to_dict('records')
 
-            # Use the B3Model class with factory pattern for training
-            from b3.service.pipeline.model import B3Model
-            b3_model = B3Model()
-
-            # Train using the new factory pattern
-            model_path = b3_model.train(
+            model_path = self._model_manager_service.train(
                 model_dir=model_dir,
                 n_jobs=n_jobs,
                 test_size=test_size,
@@ -111,7 +108,7 @@ class CompleteTrainingHandler:
             if model_type in ["rf", "random_forest"]:
                 try:
                     # Get persist service at runtime
-                    persist_service = ModelFactory.get_persist_service(model_type, storage_service)
+                    persist_service = ModelFactory.get_persist_service(model_type, self._storage_service)
                     model = persist_service.load_model(persist_service.get_model_path(model_dir))
                     model_b64 = self._serialize_model(model)
                     self._pipeline_state[MODEL_STORAGE_KEY] = model_b64

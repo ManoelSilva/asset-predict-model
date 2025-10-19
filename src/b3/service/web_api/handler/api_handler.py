@@ -94,7 +94,8 @@ def create_b3_api_handlers(storage_service: DataStorageService = None,
         'model_saving': ModelSavingHandler(pipeline_state, log_api_activity, deserialize_model, storage_service),
         'pipeline_status': PipelineStatusHandler(pipeline_state, log_api_activity),
         'complete_training': CompleteTrainingHandler(data_loading_service, preprocessing_service,
-                                                     pipeline_state, log_api_activity, serialize_model),
+                                                     pipeline_state, log_api_activity, serialize_model,
+                                                     storage_service),
         'predict': ModelPredictHandler(preprocessing_service, log_api_activity, pipeline_state,
                                        deserialize_model, storage_service)
     }
