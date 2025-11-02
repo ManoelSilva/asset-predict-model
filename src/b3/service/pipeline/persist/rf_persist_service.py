@@ -6,14 +6,15 @@ import joblib
 from asset_model_data_storage.data_storage_service import DataStorageService
 from sklearn.ensemble import RandomForestClassifier
 
-# Constants
-DEFAULT_MODEL_NAME = "b3_model.joblib"
+from b3.service.pipeline.persist.base_persist_service import BasePersistService
 
 
-class RandomForestPersistService:
+class RandomForestPersistService(BasePersistService):
     """
-    Service responsible for saving and loading trained B3 models.
+    Service responsible for saving and loading trained B3 Random Forest models.
     """
+
+    DEFAULT_MODEL_NAME = "b3_model.joblib"
 
     def __init__(self, storage_service: DataStorageService = None):
         """
@@ -22,10 +23,10 @@ class RandomForestPersistService:
         Args:
             storage_service: Data storage service instance (optional, creates default if not provided)
         """
-        self.storage_service = storage_service or DataStorageService()
+        super().__init__(storage_service)
 
     def save_model(self, model: RandomForestClassifier, model_dir: str = "models",
-                   model_name: str = DEFAULT_MODEL_NAME) -> str:
+                   model_name: str = None) -> str:
         """
         Save a trained model using the configured storage service.
         
@@ -37,6 +38,7 @@ class RandomForestPersistService:
         Returns:
             str: Path/URL to the saved model file
         """
+        model_name = model_name or self.DEFAULT_MODEL_NAME
         logging.info(f"Saving model to {model_dir}...")
 
         # Create model path
@@ -81,45 +83,3 @@ class RandomForestPersistService:
         logging.info("Model loaded successfully")
 
         return model
-
-    def model_exists(self, model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> bool:
-        """
-        Check if a model file exists using the configured storage service.
-        
-        Args:
-            model_dir: Directory where the model should be
-            model_name: Name of the model file
-            
-        Returns:
-            bool: True if model exists, False otherwise
-        """
-        model_path = os.path.join(model_dir, model_name).replace('\\', '/')
-        return self.storage_service.file_exists(model_path)
-
-    def get_model_path(self, model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
-        """
-        Get the full path/URL to a model file using the configured storage service.
-        
-        Args:
-            model_dir: Directory where the model is located
-            model_name: Name of the model file
-            
-        Returns:
-            str: Full path/URL to the model file
-        """
-        model_path = os.path.join(model_dir, model_name).replace('\\', '/')
-        return self.storage_service.get_file_url(model_path)
-
-    @staticmethod
-    def get_model_relative_path(model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
-        """
-        Get the relative path to a model file for storage operations.
-
-        Args:
-            model_dir: Directory where the model is located
-            model_name: Name of the model file
-
-        Returns:
-            str: Relative path to the model file for storage operations
-        """
-        return os.path.join(model_dir, model_name).replace('\\', '/')

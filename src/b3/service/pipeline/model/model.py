@@ -144,7 +144,7 @@ class BaseModel(ABC):
         return {
             "model_type": self.model_type,
             "is_trained": self.is_trained,
-            "rf": self.config.to_dict() if self.config else None
+            "config": self.config.to_dict() if self.config else None
         }
 
     @staticmethod

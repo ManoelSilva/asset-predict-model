@@ -6,13 +6,15 @@ from io import BytesIO
 from asset_model_data_storage.data_storage_service import DataStorageService
 from tensorflow.keras.models import load_model
 
-DEFAULT_MODEL_NAME = "b3_lstm_mtl.keras"
+from b3.service.pipeline.persist.base_persist_service import BasePersistService
 
 
-class LSTMPersistService:
+class LSTMPersistService(BasePersistService):
     """
     Service responsible for saving and loading trained LSTM models.
     """
+
+    DEFAULT_MODEL_NAME = "b3_lstm_mtl.keras"
 
     def __init__(self, storage_service: DataStorageService = None):
         """
@@ -21,9 +23,9 @@ class LSTMPersistService:
         Args:
             storage_service: Data storage service instance (optional, creates default if not provided)
         """
-        self.storage_service = storage_service or DataStorageService()
+        super().__init__(storage_service)
 
-    def save_model(self, keras_model, model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
+    def save_model(self, keras_model, model_dir: str = "models", model_name: str = None) -> str:
         """
         Save a trained Keras model using the configured storage service.
         
@@ -35,6 +37,7 @@ class LSTMPersistService:
         Returns:
             str: Path/URL to the saved model file
         """
+        model_name = model_name or self.DEFAULT_MODEL_NAME
         logging.info(f"Saving Keras pipeline to {model_dir}...")
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
 
@@ -70,45 +73,3 @@ class LSTMPersistService:
             model = load_model(tmp.name)
         logging.info("Keras pipeline loaded successfully")
         return model
-
-    def model_exists(self, model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> bool:
-        """
-        Check if a model file exists using the configured storage service.
-        
-        Args:
-            model_dir: Directory where the model should be
-            model_name: Name of the model file
-            
-        Returns:
-            bool: True if model exists, False otherwise
-        """
-        model_path = os.path.join(model_dir, model_name).replace('\\', '/')
-        return self.storage_service.file_exists(model_path)
-
-    def get_model_path(self, model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
-        """
-        Get the full path/URL to a model file using the configured storage service.
-        
-        Args:
-            model_dir: Directory where the model is located
-            model_name: Name of the model file
-            
-        Returns:
-            str: Full path/URL to the model file
-        """
-        model_path = os.path.join(model_dir, model_name).replace('\\', '/')
-        return self.storage_service.get_file_url(model_path)
-
-    @staticmethod
-    def get_model_relative_path(model_dir: str = "models", model_name: str = DEFAULT_MODEL_NAME) -> str:
-        """
-        Get the relative path to a model file for storage operations.
-
-        Args:
-            model_dir: Directory where the model is located
-            model_name: Name of the model file
-
-        Returns:
-            str: Relative path to the model file for storage operations
-        """
-        return os.path.join(model_dir, model_name).replace('\\', '/')

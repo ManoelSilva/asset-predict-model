@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from b3.service.pipeline.model.rf.rf_model import RandomForestModel
+from b3.service.pipeline.model.manager import ModelManagerService
 
 logging.basicConfig(level=logging.INFO)
 
@@ -11,23 +11,23 @@ load_dotenv()
 
 
 class AssetPredictApp(object):
-    def __init__(self, b3_model: RandomForestModel) -> None:
-        self._b3_model = b3_model
+    def __init__(self, model_manager: ModelManagerService) -> None:
+        self._model_manager = model_manager
 
     def train(self, n_jobs: int = 5):
-        self._b3_model.train(model_dir="models", n_jobs=n_jobs)
+        self._model_manager.train(model_dir="models", n_jobs=n_jobs)
 
     def predict(self, ticker: str):
         return self._b3_predict(ticker)
 
     def _b3_predict(self, ticker: str):
-        data_loader = self._b3_model.get_loader()
+        data_loader = self._model_manager.get_loader()
         new_data = data_loader.fetch(ticker=ticker)
         features = [col for col in new_data.select_dtypes(include=['number']).columns if col != 'date']
         X_new = new_data[features]
 
         # Predict cluster (buy/sell) for new data
-        predictions = self._b3_model.predict(X_new, model_dir="models")
+        predictions = self._model_manager.predict(X_new, model_dir="models")
         logging.info("Predicted actions: {}".format(predictions))
         return predictions
 
@@ -41,11 +41,13 @@ if __name__ == '__main__':
     train_parser.add_argument('--n_jobs', type=int, default=5, help='Number of jobs for training (parallelism)')
 
     # Predict command
-    predict_parser = subparsers.add_parser('predict', help='Predict using the B3 model')
+    predict_parser = subparsers.add_parser('predict', help='Predict using the B'
+                                                           ''
+                                                           '3 model')
     predict_parser.add_argument('--ticker', type=str, required=True, help='Ticker symbol to predict')
 
     args = parser.parse_args()
-    app = AssetPredictApp(B3Model())
+    app = AssetPredictApp(ModelManagerService())
 
     if args.command == 'train':
         # Pass n_jobs to the model's train_and_save method

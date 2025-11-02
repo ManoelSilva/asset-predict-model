@@ -53,7 +53,7 @@ class ModelFactory:
 
         model_class = cls._model_registry[model_type]
 
-        # If no rf provided, create one based on model type and kwargs
+        # If no config provided, create one based on model type and kwargs
         if config is None:
             config = cls._create_config_for_model_type(model_type, **kwargs)
 
