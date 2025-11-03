@@ -6,6 +6,7 @@ from flask import request, jsonify
 
 from b3.service.pipeline.model.factory import ModelFactory
 from b3.service.pipeline.model.manager import ModelManagerService
+from b3.service.pipeline.model.utils import is_rf_model
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE, DEFAULT_N_JOBS, \
     MODEL_STORAGE_KEY
 
@@ -105,7 +106,7 @@ class CompleteTrainingHandler:
             self._pipeline_state['model_path'] = model_path
 
             # For backward compatibility, try to load and serialize the pipeline if it's a Random Forest
-            if model_type in ["rf", "random_forest"]:
+            if is_rf_model(model_type):
                 try:
                     # Get persist service at runtime
                     persist_service = ModelFactory.get_persist_service(model_type, self._storage_service)

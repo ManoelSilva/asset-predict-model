@@ -5,6 +5,7 @@ from b3.service.pipeline.model.config import ModelConfig
 from b3.service.pipeline.model.lstm.lstm_model import LSTMConfig, LSTMModel
 from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model.rf.rf_model import RandomForestConfig, RandomForestModel
+from b3.service.pipeline.model.utils import is_lstm_model, is_rf_model
 from b3.service.pipeline.persist.lstm_persist_service import LSTMPersistService
 from b3.service.pipeline.persist.rf_persist_service import RandomForestPersistService
 
@@ -71,9 +72,9 @@ class ModelFactory:
         Returns:
             ModelConfig instance appropriate for the model type
         """
-        if model_type in ["rf", "random_forest"]:
+        if is_rf_model(model_type):
             return RandomForestConfig(**kwargs)
-        elif model_type in ["lstm", "lstm_mtl"]:
+        elif is_lstm_model(model_type):
             return LSTMConfig(**kwargs)
         else:
             raise ValueError(f"No configuration class found for model type: {model_type}")
@@ -90,9 +91,9 @@ class ModelFactory:
         Returns:
             Appropriate persist service instance
         """
-        if model_type in ["rf", "random_forest"]:
+        if is_rf_model(model_type):
             return RandomForestPersistService(storage_service)
-        elif model_type in ["lstm", "lstm_mtl"]:
+        elif is_lstm_model(model_type):
             return LSTMPersistService(storage_service)
         else:
             raise ValueError(f"No persist service found for model type: {model_type}")

@@ -5,6 +5,7 @@ from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
 from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.pipeline.model.utils import is_lstm_model
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR, MODEL_STORAGE_KEY
 
@@ -35,7 +36,7 @@ class ModelEvaluationHandler:
             model_type = data.get('model_type') or self._pipeline_state.get('model_type', 'rf')
 
             # For LSTM models, we need to handle evaluation differently
-            if model_type in ['lstm', 'lstm_mtl']:
+            if is_lstm_model(model_type):
                 # LSTM models are not serialized in the same way, so we need to load from storage
                 saving_service = ModelFactory.get_persist_service(model_type, self._storage_service)
                 model_path = saving_service.get_model_path('models')

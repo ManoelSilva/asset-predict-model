@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 from flask import request, jsonify
 
+from b3.service.pipeline.model.utils import is_rf_model
 from b3.service.pipeline.training.training_service_factory import TrainingServiceFactory
 
 
@@ -41,7 +42,7 @@ class ModelTrainingHandler:
             self._pipeline_state['model_type'] = model_type
 
             # Only serialize models that can be serialized (like Random Forest)
-            if model_type in ['rf', 'random_forest']:
+            if is_rf_model(model_type):
                 model_b64 = self._serialize_model(trained_model)
                 self._pipeline_state['trained_model'] = model_b64
             else:

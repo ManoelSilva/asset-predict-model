@@ -6,6 +6,7 @@ from asset_model_data_storage.data_storage_service import DataStorageService
 from b3.service.data.db.b3_featured.data_loader import B3DataLoader
 from b3.service.data.db.b3_featured.data_loading_service import DataLoadingService
 from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.pipeline.model.utils import is_lstm_model, is_rf_model
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.model_preprocessing_service import PreprocessingService
 from constants import FEATURE_SET
@@ -131,7 +132,7 @@ class ModelManagerService(object):
         Returns:
             Path to saved pipeline
         """
-        if model_type in ["rf", "random_forest"]:
+        if is_rf_model(model_type):
             # Random Forest training flow
             X_prepared, y_prepared = model.prepare_data(X, y)
             X_train, X_val, X_test, y_train, y_val, y_test = model.split_data(
@@ -144,7 +145,7 @@ class ModelManagerService(object):
             model_path = model.save_model(trained_model, model_dir)
             logging.info(f"Random Forest training completed successfully. Model saved at: {model_path}")
 
-        elif model_type in ["lstm", "lstm_mtl"]:
+        elif is_lstm_model(model_type):
             # LSTM training flow
             X_seq, yA_seq, yR_seq, p0_seq, pf_seq = model.prepare_data(
                 X, y, df_processed, lookback=lookback, horizon=horizon, price_col=price_col
