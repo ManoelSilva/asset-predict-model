@@ -63,7 +63,7 @@ class ModelTrainingHandler:
             )
             return jsonify(resp)
         except Exception as e:
-            logging.error(f"Error training pipeline: {str(e)}")
+            logging.error(f"Error training model: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
             self._log_api_activity(
                 endpoint='train_model_handler',

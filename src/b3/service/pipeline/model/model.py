@@ -11,12 +11,12 @@ from b3.service.pipeline.model.config import ModelConfig
 class BaseModel(ABC):
     """
     Abstract base class for all B3 prediction models.
-    Defines the common interface that all pipeline implementations must follow.
+    Defines the common interface that all model implementations must follow.
     """
 
     def __init__(self, config: Optional[ModelConfig] = None):
         """
-        Initialize the pipeline with optional configuration.
+        Initialize the model with optional configuration.
         
         Args:
             config: Model configuration object
@@ -29,12 +29,12 @@ class BaseModel(ABC):
     @abstractmethod
     def prepare_data(self, X: pd.DataFrame, y: pd.Series, **kwargs) -> Tuple[Any, Any]:
         """
-        Prepare data for training/prediction based on pipeline requirements.
+        Prepare data for training/prediction based on model requirements.
         
         Args:
             X: Feature data
             y: Target labels
-            **kwargs: Additional parameters specific to pipeline type
+            **kwargs: Additional parameters specific to model type
             
         Returns:
             Tuple of prepared X and y data
@@ -60,7 +60,7 @@ class BaseModel(ABC):
     @abstractmethod
     def train_model(self, X_train: Any, y_train: Any, **kwargs) -> Any:
         """
-        Train the pipeline on provided data.
+        Train the model on provided data.
         
         Args:
             X_train: Training features
@@ -68,7 +68,7 @@ class BaseModel(ABC):
             **kwargs: Additional training parameters
             
         Returns:
-            Trained pipeline object
+            Trained model object
         """
         pass
 
@@ -88,38 +88,38 @@ class BaseModel(ABC):
     @abstractmethod
     def save_model(self, model: Any, model_dir: str) -> str:
         """
-        Save the trained pipeline to storage.
+        Save the trained model to storage.
         
         Args:
-            model: Trained pipeline object
-            model_dir: Directory to save the pipeline
+            model: Trained model object
+            model_dir: Directory to save the model
             
         Returns:
-            Path to saved pipeline
+            Path to saved model
         """
         pass
 
     @abstractmethod
     def load_model(self, model_path: str) -> Any:
         """
-        Load a saved pipeline from storage.
+        Load a saved model from storage.
         
         Args:
-            model_path: Path to saved pipeline
+            model_path: Path to saved model
             
         Returns:
-            Loaded pipeline object
+            Loaded model object
         """
         pass
 
     def evaluate_model(self, model: Any, X_val: Any, y_val: Any, X_test: Any, y_test: Any,
                        df_processed: pd.DataFrame, **kwargs) -> Dict[str, Any]:
         """
-        Evaluate the trained pipeline (default implementation).
-        Can be overridden by subclasses for pipeline-specific evaluation.
+        Evaluate the trained model (default implementation).
+        Can be overridden by subclasses for model-specific evaluation.
         
         Args:
-            model: Trained pipeline
+            model: Trained model
             X_val: Validation features
             y_val: Validation targets
             X_test: Test features
@@ -131,15 +131,15 @@ class BaseModel(ABC):
             Dictionary containing evaluation results
         """
         # Default implementation - can be overridden
-        logging.info(f"Evaluating {self.model_type} pipeline")
+        logging.info(f"Evaluating {self.model_type} model")
         return {"model_type": self.model_type, "evaluation": "completed"}
 
     def get_model_info(self) -> Dict[str, Any]:
         """
-        Get information about the pipeline.
+        Get information about the model.
         
         Returns:
-            Dictionary containing pipeline information
+            Dictionary containing model information
         """
         return {
             "model_type": self.model_type,

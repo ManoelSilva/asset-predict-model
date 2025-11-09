@@ -88,7 +88,7 @@ class ModelPredictHandler:
 
         return expected_features
 
-    def _align_and_validate_features(self, data_df, expected_features=None, data_source="unknown",
+    def _align_and_validate_features(self, data_df, expected_features=None, data_source="unknown", 
                                      require_all_features=False):
         """
         Consolidated method to align and validate features for prediction.
@@ -164,7 +164,7 @@ class ModelPredictHandler:
         Uses consolidated feature alignment logic.
         """
         features_df, features_list, missing_features, error_response = self._align_and_validate_features(
-            new_data,
+            new_data, 
             require_all_features=True
         )
 

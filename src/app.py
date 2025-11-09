@@ -6,16 +6,18 @@ from b3.service.pipeline.model.manager import ModelManagerService
 logging.basicConfig(level=logging.INFO)
 
 from dotenv import load_dotenv
+from b3.service.pipeline.model.training_config import TrainingConfig
 
 load_dotenv()
 
 
 class AssetPredictApp(object):
-    def __init__(self, model_manager: ModelManagerService) -> None:
-        self._model_manager = model_manager
+    def __init__(self, b3_model: ModelManagerService) -> None:
+        self._b3_model = b3_model
 
     def train(self, n_jobs: int = 5):
-        self._model_manager.train(model_dir="models", n_jobs=n_jobs)
+        config = TrainingConfig(model_dir="models", n_jobs=n_jobs)
+        self._b3_model.train(config=config)
 
     def predict(self, ticker: str):
         return self._b3_predict(ticker)

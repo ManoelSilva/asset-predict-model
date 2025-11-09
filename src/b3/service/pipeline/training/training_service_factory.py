@@ -15,14 +15,14 @@ class BaseTrainingService(ABC):
     @abstractmethod
     def train_model(self, *args, **kwargs) -> Any:
         """
-        Train a pipeline using the specific training service.
+        Train a model using the specific training service.
         
         Args:
             *args: Variable length argument list
             **kwargs: Arbitrary keyword arguments
             
         Returns:
-            Trained pipeline object
+            Trained model object
         """
         pass
 
@@ -47,7 +47,7 @@ class RandomForestTrainingService(BaseTrainingService):
 
     def train_model(self, X_train, y_train, **kwargs):
         """
-        Train Random Forest pipeline.
+        Train Random Forest model.
         
         Args:
             X_train: Training features
@@ -88,7 +88,7 @@ class LSTMTrainingService(BaseTrainingService):
 
     def train_model(self, X_train, yA_train, yR_train, **kwargs):
         """
-        Train LSTM Multi-Task Learning pipeline.
+        Train LSTM Multi-Task Learning model.
         
         Args:
             X_train: Training feature sequences
@@ -140,7 +140,7 @@ class LSTMTrainingService(BaseTrainingService):
 
 class TrainingServiceFactory:
     """
-    Factory class for creating training service instances based on pipeline type.
+    Factory class for creating training service instances based on model type.
     """
 
     _service_registry = {}
@@ -148,10 +148,10 @@ class TrainingServiceFactory:
     @classmethod
     def register_service(cls, model_type: str, service_class: type):
         """
-        Register a training service class for a specific pipeline type.
+        Register a training service class for a specific model type.
         
         Args:
-            model_type: String identifier for the pipeline type
+            model_type: String identifier for the model type
             service_class: Training service class to register
         """
         if not issubclass(service_class, BaseTrainingService):
@@ -162,10 +162,10 @@ class TrainingServiceFactory:
     @classmethod
     def get_training_service(cls, model_type: str) -> BaseTrainingService:
         """
-        Create a training service instance based on pipeline type.
+        Create a training service instance based on model type.
         
         Args:
-            model_type: Type of pipeline to create training service for
+            model_type: Type of model to create training service for
             
         Returns:
             Instance of the requested training service type
@@ -175,7 +175,7 @@ class TrainingServiceFactory:
         """
         if model_type not in cls._service_registry:
             available_types = list(cls._service_registry.keys())
-            raise ValueError(f"Unknown pipeline type '{model_type}'. Available types: {available_types}")
+            raise ValueError(f"Unknown model type '{model_type}'. Available types: {available_types}")
 
         service_class = cls._service_registry[model_type]
         return service_class()
@@ -203,8 +203,6 @@ class TrainingServiceFactory:
         """
         return model_type in cls._service_registry
 
-
-## TODO refactor
 
 # Register the training services with the factory
 TrainingServiceFactory.register_service("rf", RandomForestTrainingService)

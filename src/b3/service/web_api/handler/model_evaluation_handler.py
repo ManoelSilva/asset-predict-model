@@ -21,7 +21,7 @@ class ModelEvaluationHandler:
         req_data = request.get_json() if request.is_json else None
         try:
             if MODEL_STORAGE_KEY not in self._pipeline_state:
-                resp = {'status': 'error', 'message': 'No trained pipeline found. Please train pipeline first.'}
+                resp = {'status': 'error', 'message': 'No trained model found. Please train model first.'}
                 self._log_api_activity(
                     endpoint='evaluate_model_handler',
                     request_data=req_data,
@@ -69,7 +69,7 @@ class ModelEvaluationHandler:
             )
             return jsonify(resp)
         except Exception as e:
-            logging.error(f"Error evaluating pipeline: {str(e)}")
+            logging.error(f"Error evaluating model: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
             self._log_api_activity(
                 endpoint='evaluate_model_handler',
