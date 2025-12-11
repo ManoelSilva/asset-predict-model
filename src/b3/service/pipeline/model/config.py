@@ -3,7 +3,7 @@ from typing import Dict, Any
 
 
 class ModelConfig(ABC):
-    """Abstract base class for pipeline configurations."""
+    """Abstract base class for model configurations."""
 
     def __init__(self, **kwargs):
         for key, value in kwargs.items():

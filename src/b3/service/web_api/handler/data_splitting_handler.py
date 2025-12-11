@@ -3,7 +3,8 @@ import logging
 import pandas as pd
 from flask import request, jsonify
 
-from b3.service.pipeline.training.training_service_factory import TrainingServiceFactory
+from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.pipeline.model.utils import normalize_model_type
 from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE
 
 
@@ -27,13 +28,17 @@ class DataSplittingHandler:
                 return jsonify(resp), HTTP_STATUS_BAD_REQUEST
             data = req_data or {}
             model_type = data.get('model_type', 'rf')  # Extract model_type from request
+            model_type = normalize_model_type(model_type)
             test_size = data.get('test_size', DEFAULT_TEST_SIZE)
             val_size = data.get('val_size', DEFAULT_VAL_SIZE)
             x = pd.DataFrame(self._pipeline_state['X_features'])
             y = pd.Series(self._pipeline_state['y_targets'])
-            # Get training service at runtime based on model_type
-            training_service = TrainingServiceFactory.get_training_service(model_type)
-            x_train, x_val, x_test, y_train, y_val, y_test = training_service.split_data(
+
+            # Get model instance using factory
+            model = ModelFactory.get_model(model_type)
+
+            # Use model's split_data method
+            x_train, x_val, x_test, y_train, y_val, y_test = model.split_data(
                 x, y, test_size, val_size
             )
             self._pipeline_state['X_train'] = x_train.to_dict('records')

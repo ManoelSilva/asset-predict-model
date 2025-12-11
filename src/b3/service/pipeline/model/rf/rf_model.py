@@ -1,16 +1,17 @@
 import logging
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, cast
 
 import numpy as np
 import pandas as pd
 from asset_model_data_storage.data_storage_service import DataStorageService
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV, train_test_split
 
 from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model.rf.rf_config import RandomForestConfig
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.rf_persist_service import RandomForestPersistService
-from b3.service.pipeline.training.model_training_service import B3ModelTrainingService
+from constants import RANDOM_STATE
 
 
 class RandomForestModel(BaseModel):
@@ -29,7 +30,6 @@ class RandomForestModel(BaseModel):
         """
         super().__init__(config or RandomForestConfig())
         self.storage_service = storage_service or DataStorageService()
-        self.training_service = B3ModelTrainingService()
         self.saving_service = RandomForestPersistService(self.storage_service)
         self.evaluation_service = B3ModelEvaluationService(self.storage_service)
 
@@ -83,7 +83,18 @@ class RandomForestModel(BaseModel):
         Returns:
             Tuple containing (X_train, X_val, X_test, y_train, y_val, y_test)
         """
-        return self.training_service.split_data(X, y, test_size, val_size)
+        # First split: separate test set
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            X, y, test_size=test_size, random_state=RANDOM_STATE, stratify=y
+        )
+
+        # Second split: separate validation set from remaining data
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=val_size, random_state=RANDOM_STATE, stratify=y_temp
+        )
+
+        logging.info(f"Data split - Train: {len(X_train)}, Validation: {len(X_val)}, Test: {len(X_test)}")
+        return X_train, X_val, X_test, y_train, y_val, y_test
 
     def train_model(self, X_train: pd.DataFrame, y_train: pd.Series, **kwargs) -> RandomForestClassifier:
         """
@@ -100,7 +111,26 @@ class RandomForestModel(BaseModel):
         n_jobs = kwargs.get('n_jobs', self.config.n_jobs)
 
         logging.info(f"Training Random Forest pipeline with {n_jobs} jobs")
-        model = self.training_service.train_model(X_train, y_train, n_jobs=n_jobs)
+        logging.info("Starting hyperparameter tuning...")
+
+        param_dist = {
+            'min_samples_leaf': [1, 5],  # Reduced grid size
+            'max_features': ['sqrt', 0.5]  # Reduced grid size
+        }
+
+        rf = RandomForestClassifier(random_state=RANDOM_STATE)
+        cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)  # Fewer folds
+
+        random_search = RandomizedSearchCV(
+            rf, param_distributions=param_dist, n_iter=4, cv=cv, scoring='f1_weighted',
+            n_jobs=n_jobs, verbose=1, random_state=RANDOM_STATE
+        )
+
+        random_search.fit(X_train, y_train)
+        print("Best parameters found:", random_search.best_params_)
+        logging.info(f"Hyperparameter tuning completed. Best params: {random_search.best_params_}")
+
+        model = cast(RandomForestClassifier, random_search.best_estimator_)
 
         self.model = model
         self.is_trained = True

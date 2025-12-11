@@ -1,10 +1,13 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
-import pandas as pd
+from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
-from b3.service.pipeline.model.utils import is_rf_model
-from b3.service.pipeline.training.training_service_factory import TrainingServiceFactory
+from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.pipeline.model.manager import ModelManagerService
+from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model, normalize_model_type
+from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_N_JOBS, MODEL_STORAGE_KEY
 
 
 class ModelTrainingHandler:
@@ -12,7 +15,9 @@ class ModelTrainingHandler:
         self._pipeline_state = pipeline_state
         self._log_api_activity = log_api_activity
         self._serialize_model = serialize_model
-        self._storage_service = storage_service
+        self._storage_service = storage_service or DataStorageService()
+        self._model_manager_service = ModelManagerService(self._storage_service)
+        self._executor = ThreadPoolExecutor(max_workers=1)
 
     def train_model_handler(self):
         req_data = request.get_json() if request.is_json else None
@@ -27,33 +32,22 @@ class ModelTrainingHandler:
                     error_message=resp['message']
                 )
                 return jsonify(resp), 400
+
             data = req_data or {}
-            n_jobs = data.get('n_jobs', 5)
-            model_type = data.get('model_type', 'rf')  # Extract model_type from request
+            n_jobs = data.get('n_jobs', DEFAULT_N_JOBS)
+            model_type = data.get('model_type', 'rf')
+            model_type = normalize_model_type(model_type)
 
-            x_train = pd.DataFrame(self._pipeline_state['X_train'])
-            y_train = pd.Series(self._pipeline_state['y_train'])
+            # Start training in background
+            future = self._executor.submit(self._run_training_pipeline, model_type, n_jobs)
+            self._pipeline_state['training_future'] = future
+            self._pipeline_state['training_status'] = 'running'
 
-            # Get training service at runtime based on model_type
-            training_service = TrainingServiceFactory.get_training_service(model_type)
-            trained_model = training_service.train_model(x_train, y_train, n_jobs)
-
-            # Store model_type in pipeline_state
-            self._pipeline_state['model_type'] = model_type
-
-            # Only serialize models that can be serialized (like Random Forest)
-            if is_rf_model(model_type):
-                model_b64 = self._serialize_model(trained_model)
-                self._pipeline_state['trained_model'] = model_b64
-            else:
-                # For LSTM models, store the model type instead
-                self._pipeline_state['trained_model_type'] = model_type
             resp = {
                 'status': 'success',
-                'message': 'Model trained successfully',
-                'model_type': type(trained_model).__name__,
-                'requested_model_type': model_type,
-                'best_params': trained_model.get_params() if hasattr(trained_model, 'get_params') else {}
+                'message': 'Model training started in background',
+                'training_status': 'running',
+                'model_type': model_type
             }
             self._log_api_activity(
                 endpoint='train_model_handler',
@@ -63,7 +57,7 @@ class ModelTrainingHandler:
             )
             return jsonify(resp)
         except Exception as e:
-            logging.error(f"Error training model: {str(e)}")
+            logging.error(f"Error starting model training: {str(e)}")
             resp = {'status': 'error', 'message': str(e)}
             self._log_api_activity(
                 endpoint='train_model_handler',
@@ -72,4 +66,89 @@ class ModelTrainingHandler:
                 status='error',
                 error_message=str(e)
             )
-            return jsonify(resp), 500
+            return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR
+
+    def _run_training_pipeline(self, model_type: str, n_jobs: int):
+        try:
+            import pandas as pd
+            import numpy as np
+
+            # Create model instance using factory
+            model = ModelFactory.get_model(model_type)
+
+            # Handle different model types
+            if is_rf_model(model_type):
+                # Get training data from pipeline state for RF
+                x_train = pd.DataFrame(self._pipeline_state['X_train'])
+                y_train = pd.Series(self._pipeline_state['y_train'])
+
+                # Prepare data if needed
+                if hasattr(model, 'prepare_data'):
+                    x_train, y_train = model.prepare_data(x_train, y_train)
+
+                # Train model
+                trained_model = model.train_model(x_train, y_train, n_jobs=n_jobs)
+                train_size = len(x_train)
+
+            elif is_lstm_model(model_type):
+                # For LSTM, we need sequences - check if they're in pipeline_state
+                # If not, we need to prepare them from the existing data
+                if 'X_train_seq' in self._pipeline_state:
+                    # Sequences already prepared
+                    x_train = np.array(self._pipeline_state['X_train_seq'])
+                    yA_train = pd.Series(self._pipeline_state['yA_train'])
+                    yR_train = np.array(self._pipeline_state['yR_train'])
+                else:
+                    # Need to prepare sequences from existing data
+                    # This requires processed data and features
+                    if 'X_features' not in self._pipeline_state or 'y_targets' not in self._pipeline_state:
+                        raise ValueError(
+                            "For LSTM models, data must be prepared as sequences or X_features/y_targets must be available")
+
+                    x_train = pd.DataFrame(self._pipeline_state['X_features'])
+                    y_train = pd.Series(self._pipeline_state['y_targets'])
+                    df_processed = pd.DataFrame(self._pipeline_state.get('processed_data', []))
+
+                    if df_processed.empty:
+                        raise ValueError("For LSTM models, processed_data must be available in pipeline_state")
+
+                    # Prepare sequences
+                    x_train, yA_train, yR_train, _, _ = model.prepare_data(
+                        x_train, y_train, df_processed
+                    )
+
+                # Train model
+                trained_model = model.train_model(x_train, yA_train, yR_train, lookback=model.config.lookback,
+                                                  n_features=x_train.shape[2])
+                train_size = len(x_train)
+
+            else:
+                raise ValueError(f"Unsupported model type: {model_type}")
+
+            # Store model_type in pipeline_state
+            self._pipeline_state['model_type'] = model_type
+
+            # Store trained model in pipeline state
+            if is_rf_model(model_type):
+                # Serialize Random Forest models
+                model_b64 = self._serialize_model(trained_model)
+                self._pipeline_state[MODEL_STORAGE_KEY] = model_b64
+            else:
+                # For LSTM models, store the model type
+                self._pipeline_state['trained_model_type'] = model_type
+
+            # Store training results
+            self._pipeline_state['training_status'] = 'completed'
+            self._pipeline_state['training_results'] = {
+                'model_type': model_type,
+                'best_params': trained_model.get_params() if hasattr(trained_model, 'get_params') else {},
+                'train_size': train_size
+            }
+
+            logging.info(f"Model training completed successfully for {model_type} model")
+            return True
+        except Exception as e:
+            logging.error(f"Error in model training pipeline: {str(e)}")
+            self._pipeline_state['training_status'] = 'failed'
+            self._pipeline_state['training_error'] = str(e)
+            return False

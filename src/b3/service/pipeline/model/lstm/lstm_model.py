@@ -4,13 +4,15 @@ from typing import Dict, Any, Tuple, Optional
 import numpy as np
 import pandas as pd
 from asset_model_data_storage.data_storage_service import DataStorageService
+from pandas import DataFrame, Series
+from sklearn.model_selection import train_test_split
 
+from b3.service.pipeline.model.lstm.keras_mtl_model import B3KerasMTLModel
 from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
 from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.lstm_persist_service import LSTMPersistService
-from b3.service.pipeline.training.lstm_mtl_training_service import B3LSTMMultiTaskTrainingService, LSTMMultiTaskConfig, \
-    B3KerasMTLModel
+from constants import RANDOM_STATE
 
 
 class LSTMModel(BaseModel):
@@ -29,7 +31,6 @@ class LSTMModel(BaseModel):
         """
         super().__init__(config or LSTMConfig())
         self.storage_service = storage_service or DataStorageService()
-        self.training_service = B3LSTMMultiTaskTrainingService()
         self.saving_service = LSTMPersistService(self.storage_service)
         self.evaluation_service = B3ModelEvaluationService(self.storage_service)
 
@@ -59,7 +60,7 @@ class LSTMModel(BaseModel):
 
         logging.info(f"Building LSTM sequences with lookback={lookback}, horizon={horizon}")
 
-        X_seq, yA_seq, yR_seq, p0_seq, pf_seq = self.training_service.build_sequences(
+        X_seq, yA_seq, yR_seq, p0_seq, pf_seq = self._build_sequences(
             X, y, df_processed, price_col=price_col, lookback=lookback, horizon=horizon
         )
 
@@ -68,6 +69,71 @@ class LSTMModel(BaseModel):
 
         logging.info(f"Built {len(X_seq)} sequences for LSTM training")
         return X_seq, yA_seq, yR_seq, p0_seq, pf_seq
+
+    @staticmethod
+    def _group_keys(df: DataFrame):
+        if "ticker" in df.columns:
+            return list(df["ticker"].astype(str).unique())
+        return [None]
+
+    @staticmethod
+    def _df_for_group(df: DataFrame, group: Optional[str]) -> DataFrame:
+        gdf = df if group is None else df[df["ticker"].astype(str) == group]
+        for col in ["date", "datetime", "timestamp"]:
+            if col in gdf.columns:
+                return gdf.sort_values(col)
+        return gdf
+
+    def _build_sequences(self, X_df: DataFrame, y_action: Series, df_full: DataFrame,
+                         price_col: str = "close", lookback: int = 32, horizon: int = 1
+                         ) -> Tuple[np.ndarray, Series, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Build sequences for multi-task learning.
+
+        Returns:
+            X_seq: (N, lookback, n_features)
+            y_action_seq: Series of action labels aligned to sequences
+            y_return_seq: (N,) predicted target returns over horizon
+            last_price_seq: (N,) price at prediction time (for price mapping)
+            future_price_seq: (N,) actual future price at t+h (for regression eval)
+        """
+        features = X_df.columns.tolist()
+        X_list, act_list, ret_list, last_price_list, future_price_list = [], [], [], [], []
+
+        for key in self._group_keys(df_full):
+            gdf = self._df_for_group(df_full, key)
+            Xg = X_df.loc[gdf.index, features].values.astype("float32")
+            yg = y_action.loc[gdf.index].astype(str).str.replace("_target", "", regex=False)
+            if price_col not in gdf.columns:
+                raise ValueError(f"Price column '{price_col}' not found in dataframe")
+            pg = gdf[price_col].astype(float).values
+
+            if len(Xg) <= lookback + horizon:
+                continue
+
+            for i in range(lookback, len(Xg) - horizon):
+                X_list.append(Xg[i - lookback:i])
+                act_list.append(yg.iloc[i])
+                p0 = pg[i - 1]
+                p1 = pg[i - 1 + horizon]
+                r = (p1 / p0) - 1.0
+                ret_list.append(r)
+                last_price_list.append(p0)
+                future_price_list.append(p1)
+
+        if not X_list:
+            return (np.zeros((0, lookback, len(features)), dtype="float32"),
+                    pd.Series([], dtype="object"),
+                    np.zeros((0,), dtype="float32"),
+                    np.zeros((0,), dtype="float32"),
+                    np.zeros((0,), dtype="float32"))
+
+        X_seq = np.stack(X_list, axis=0)
+        y_action_seq = pd.Series(act_list, name="target")
+        y_return_seq = np.array(ret_list, dtype="float32")
+        last_price_seq = np.array(last_price_list, dtype="float32")
+        future_price_seq = np.array(future_price_list, dtype="float32")
+        return X_seq, y_action_seq, y_return_seq, last_price_seq, future_price_seq
 
     def split_data(self, X_seq: np.ndarray, yA_seq: pd.Series, yR_seq: np.ndarray,
                    p0_seq: np.ndarray, pf_seq: np.ndarray, test_size: float = 0.2, val_size: float = 0.2) -> Tuple[
@@ -87,9 +153,28 @@ class LSTMModel(BaseModel):
         Returns:
             Tuple containing all train/val/test splits
         """
-        return self.training_service.split_sequences(
+        return self._split_sequences(
             X_seq, yA_seq, yR_seq, p0_seq, pf_seq, test_size, val_size
         )
+
+    @staticmethod
+    def _split_sequences(X: np.ndarray, y_action: Series, y_return: np.ndarray,
+                         last_price: np.ndarray, future_price: np.ndarray,
+                         test_size: float, val_size: float):
+        y_norm = y_action.astype(str)
+        X_train, X_temp, yA_train, yA_temp, yR_train, yR_temp, p0_train, p0_temp, pf_train, pf_temp = train_test_split(
+            X, y_norm, y_return, last_price, future_price,
+            test_size=test_size, random_state=RANDOM_STATE, stratify=y_norm
+        )
+        X_val, X_test, yA_val, yA_test, yR_val, yR_test, p0_val, p0_test, pf_val, pf_test = train_test_split(
+            X_temp, yA_temp, yR_temp, p0_temp, pf_temp,
+            test_size=val_size, random_state=RANDOM_STATE, stratify=yA_temp
+        )
+        return (X_train, X_val, X_test,
+                yA_train, yA_val, yA_test,
+                yR_train, yR_val, yR_test,
+                p0_train, p0_val, p0_test,
+                pf_train, pf_val, pf_test)
 
     def train_model(self, X_train: np.ndarray, yA_train: pd.Series, yR_train: np.ndarray, **kwargs) -> B3KerasMTLModel:
         """
@@ -108,7 +193,7 @@ class LSTMModel(BaseModel):
         n_features = kwargs.get('n_features', X_train.shape[2])
 
         # Create LSTM rf from pipeline rf
-        lstm_config = LSTMMultiTaskConfig(
+        lstm_config = LSTMConfig(
             lookback=lookback,
             horizon=self.config.horizon,
             units=self.config.units,
@@ -122,15 +207,15 @@ class LSTMModel(BaseModel):
 
         logging.info(f"Training LSTM pipeline with {lstm_config.epochs} epochs, batch_size={lstm_config.batch_size}")
 
-        model = self.training_service.train_model(
-            X_train, yA_train, yR_train, lookback=lookback, n_features=n_features, config=lstm_config
-        )
+        clf = B3KerasMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config)
+        clf.fit(X_train, yA_train, yR_train)
+        logging.info("LSTM multi-task training completed")
 
-        self.model = model
+        self.model = clf
         self.is_trained = True
 
         logging.info("LSTM training completed successfully")
-        return model
+        return clf
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
@@ -235,7 +320,7 @@ class LSTMModel(BaseModel):
         model = B3KerasMTLModel(
             input_timesteps=self.config.lookback,
             input_features=keras_model.input_shape[2],  # Get feature count from loaded pipeline
-            config=LSTMMultiTaskConfig(
+            config=LSTMConfig(
                 lookback=self.config.lookback,
                 horizon=self.config.horizon,
                 units=self.config.units,

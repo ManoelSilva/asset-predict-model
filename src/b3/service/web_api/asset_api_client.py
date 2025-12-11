@@ -1,5 +1,4 @@
 import os
-from datetime import datetime, timedelta
 from typing import Optional, Tuple, List, Dict
 
 import requests
@@ -33,13 +32,6 @@ class AssetApiClient:
         Returns:
             Tuple of (historical_data_list, error_message)
         """
-        if end_date is None:
-            end_date = datetime.now().strftime("%Y-%m-%d")
-
-        # Calculate start date
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-        # Single, clean endpoint pattern for historical data
         url = f"{AssetApiClient.BASE_URL}{ticker}/history?days={days}"
 
         try:
@@ -61,37 +53,3 @@ class AssetApiClient:
 
         except requests.RequestException as e:
             return None, f"Error fetching historical data from Asset API: {str(e)}"
-
-    @staticmethod
-    def fetch_ticker_with_history(ticker: str, days: int = 32) -> Tuple[Optional[Dict], Optional[str]]:
-        """
-        Fetch both current and historical data for a ticker.
-        
-        Args:
-            ticker: Ticker symbol
-            days: Number of days of historical data to fetch
-            
-        Returns:
-            Tuple of (combined_data, error_message)
-        """
-        # Fetch current data
-        current_data, current_error = AssetApiClient.fetch_ticker_info(ticker)
-        if current_error:
-            return None, f"Error fetching current data: {current_error}"
-
-        # Fetch historical data
-        historical_data, history_error = AssetApiClient.fetch_historical_data(ticker, days)
-
-        if historical_data is None:
-            # If no historical data available, return current data with warning
-            return {
-                'current': current_data,
-                'historical': None,
-                'warning': f"No historical data available: {history_error}"
-            }, None
-
-        return {
-            'current': current_data,
-            'historical': historical_data,
-            'data_points': len(historical_data)
-        }, None
