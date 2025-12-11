@@ -1,4 +1,7 @@
 import logging
+import pandas as pd
+import numpy as np
+
 from concurrent.futures import ThreadPoolExecutor
 
 from asset_model_data_storage.data_storage_service import DataStorageService
@@ -70,9 +73,6 @@ class ModelTrainingHandler:
 
     def _run_training_pipeline(self, model_type: str, n_jobs: int):
         try:
-            import pandas as pd
-            import numpy as np
-
             # Create model instance using factory
             model = ModelFactory.get_model(model_type)
 

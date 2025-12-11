@@ -95,7 +95,7 @@ class CompleteTrainingHandler:
                 horizon=horizon,
                 epochs=epochs,
                 batch_size=batch_size,
-                lr=lr,
+                learning_rate=lr,
                 units=units,
                 dropout=dropout,
                 price_col=price_col
