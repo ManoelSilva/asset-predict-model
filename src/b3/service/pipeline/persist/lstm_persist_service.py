@@ -38,20 +38,27 @@ class LSTMPersistService(BasePersistService):
             str: Path/URL to the saved model file
         """
         model_name = model_name or self.DEFAULT_MODEL_NAME
-        logging.info(f"Saving Keras pipeline to {model_dir}...")
+        logging.info(f"Saving Keras model to {model_dir}...")
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
 
         if self.storage_service.is_local_storage():
             self.storage_service.create_directory(model_dir)
 
-        with tempfile.NamedTemporaryFile(suffix=".keras", delete=True) as tmp:
-            keras_model.save(tmp.name)
-            with open(tmp.name, "rb") as f:
+        # Create a temp file, close the descriptor immediately so other processes/libs can use the path
+        fd, tmp_path = tempfile.mkstemp(suffix=".keras")
+        os.close(fd)
+
+        try:
+            keras_model.save(tmp_path)
+            with open(tmp_path, "rb") as f:
                 model_bytes = BytesIO(f.read())
 
-        saved_path = self.storage_service.save_file(model_path, model_bytes, 'application/octet-stream')
-        logging.info(f"Keras pipeline saved: {saved_path}")
-        return saved_path
+            saved_path = self.storage_service.save_file(model_path, model_bytes, 'application/octet-stream')
+            logging.info(f"Keras model saved: {saved_path}")
+            return saved_path
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     def load_model(self, model_path: str):
         """
@@ -63,13 +70,25 @@ class LSTMPersistService(BasePersistService):
         Returns:
             Loaded Keras model
         """
-        logging.info(f"Loading Keras pipeline from {model_path}...")
+        logging.info(f"Loading Keras model from {model_path}...")
         if not self.storage_service.file_exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
+
         data = self.storage_service.load_file(model_path)
-        with tempfile.NamedTemporaryFile(suffix=".keras", delete=True) as tmp:
-            with open(tmp.name, "wb") as f:
+
+        # Create a temp file, close the descriptor immediately
+        fd, tmp_path = tempfile.mkstemp(suffix=".keras")
+        os.close(fd)
+
+        try:
+            with open(tmp_path, "wb") as f:
                 f.write(data)
-            model = load_model(tmp.name)
-        logging.info("Keras pipeline loaded successfully")
-        return model
+            model = load_model(tmp_path)
+            logging.info("Keras model loaded successfully")
+            return model
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception as e:
+                    logging.warning(f"Failed to remove temp file {tmp_path}: {e}")

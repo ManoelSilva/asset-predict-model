@@ -3,6 +3,7 @@ from typing import Dict, Any, Tuple, Optional
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from asset_model_data_storage.data_storage_service import DataStorageService
 from pandas import DataFrame, Series
 from sklearn.model_selection import train_test_split
@@ -84,11 +85,12 @@ class LSTMModel(BaseModel):
                 return gdf.sort_values(col)
         return gdf
 
-    def _build_sequences(self, X_df: DataFrame, y_action: Series, df_full: DataFrame,
+    @staticmethod
+    def _build_sequences(X_df: DataFrame, y_action: Series, df_full: DataFrame,
                          price_col: str = "close", lookback: int = 32, horizon: int = 1
                          ) -> Tuple[np.ndarray, Series, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Build sequences for multi-task learning.
+        Build sequences for multitask learning.
 
         Returns:
             X_seq: (N, lookback, n_features)
@@ -97,43 +99,118 @@ class LSTMModel(BaseModel):
             last_price_seq: (N,) price at prediction time (for price mapping)
             future_price_seq: (N,) actual future price at t+h (for regression eval)
         """
+        import gc
         features = X_df.columns.tolist()
-        X_list, act_list, ret_list, last_price_list, future_price_list = [], [], [], [], []
+        n_features = len(features)
 
-        for key in self._group_keys(df_full):
-            gdf = self._df_for_group(df_full, key)
-            Xg = X_df.loc[gdf.index, features].values.astype("float32")
-            yg = y_action.loc[gdf.index].astype(str).str.replace("_target", "", regex=False)
+        # Pre-process targets globally
+        y_processed = y_action.astype(str).str.replace("_target", "", regex=False)
+
+        # 1. Collect Valid Group Data and Calculate Total Size
+        processed_groups = []
+        total_sequences = 0
+
+        # Use unique tickers to iterate
+        unique_tickers = df_full["ticker"].unique() if "ticker" in df_full.columns else [None]
+
+        for ticker in unique_tickers:
+            if ticker is None:
+                gdf = df_full
+            else:
+                gdf = df_full[df_full["ticker"] == ticker]
+
+            # Sort by date
+            for col in ["date", "datetime", "timestamp"]:
+                if col in gdf.columns:
+                    gdf = gdf.sort_values(col)
+                    break
+
+            indices = gdf.index
+
+            # Extract Data
+            # Optimized: check bounds first
+            if len(gdf) <= lookback + horizon:
+                continue
+
+            # Intersection check (fast fail)
+            if not indices.isin(X_df.index).all():
+                common = indices.intersection(X_df.index)
+                if len(common) <= lookback + horizon: continue
+                gdf = gdf.loc[common]
+                indices = common
+
+            # Extract arrays (small copy)
+            Xg = X_df.loc[indices, features].values.astype("float32")
+            yg = y_processed.loc[indices].values
+
             if price_col not in gdf.columns:
                 raise ValueError(f"Price column '{price_col}' not found in dataframe")
             pg = gdf[price_col].astype(float).values
 
-            if len(Xg) <= lookback + horizon:
-                continue
+            n_samples = len(Xg)
+            n_windows = n_samples - horizon - lookback
 
-            for i in range(lookback, len(Xg) - horizon):
-                X_list.append(Xg[i - lookback:i])
-                act_list.append(yg.iloc[i])
-                p0 = pg[i - 1]
-                p1 = pg[i - 1 + horizon]
-                r = (p1 / p0) - 1.0
-                ret_list.append(r)
-                last_price_list.append(p0)
-                future_price_list.append(p1)
+            if n_windows > 0:
+                processed_groups.append((Xg, yg, pg, n_windows))
+                total_sequences += n_windows
 
-        if not X_list:
-            return (np.zeros((0, lookback, len(features)), dtype="float32"),
+        if total_sequences == 0:
+            return (np.zeros((0, lookback, n_features), dtype="float32"),
                     pd.Series([], dtype="object"),
                     np.zeros((0,), dtype="float32"),
                     np.zeros((0,), dtype="float32"),
                     np.zeros((0,), dtype="float32"))
 
-        X_seq = np.stack(X_list, axis=0)
-        y_action_seq = pd.Series(act_list, name="target")
-        y_return_seq = np.array(ret_list, dtype="float32")
-        last_price_seq = np.array(last_price_list, dtype="float32")
-        future_price_seq = np.array(future_price_list, dtype="float32")
-        return X_seq, y_action_seq, y_return_seq, last_price_seq, future_price_seq
+        logging.info(
+            f"Allocating memory for {total_sequences} sequences (approx {total_sequences * lookback * n_features * 4 / 1e9:.2f} GB)...")
+
+        # 2. Pre-allocate arrays
+        X_seq = np.zeros((total_sequences, lookback, n_features), dtype="float32")
+        y_action_seq = np.empty((total_sequences,), dtype=object)
+        y_return_seq = np.zeros((total_sequences,), dtype="float32")
+        last_price_seq = np.zeros((total_sequences,), dtype="float32")
+        future_price_seq = np.zeros((total_sequences,), dtype="float32")
+
+        # 3. Fill Arrays
+        current_idx = 0
+
+        # Iterate and clear memory as we go
+        while processed_groups:
+            Xg, yg, pg, n_w = processed_groups.pop(0)
+
+            # Vectorized Windowing
+            # Shape: (n_w, n_features, lookback) -> need transpose
+            windows = np.lib.stride_tricks.sliding_window_view(Xg, lookback, axis=0)
+            windows = windows[:n_w]
+
+            # Transpose to (Batch, Time, Features)
+            # sliding_window_view puts window dim at the end: (Batch, Features, Time)
+            # LSTM expects (Batch, Time, Features) -> swap last two axes
+            windows = windows.transpose(0, 2, 1)
+
+            X_seq[current_idx: current_idx + n_w] = windows
+
+            # Targets
+            y_action_seq[current_idx: current_idx + n_w] = yg[lookback: lookback + n_w]
+
+            p0 = pg[lookback - 1: lookback - 1 + n_w]
+            p1 = pg[lookback - 1 + horizon: lookback - 1 + horizon + n_w]
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+                ret = (p1 / p0) - 1.0
+
+            y_return_seq[current_idx: current_idx + n_w] = ret
+            last_price_seq[current_idx: current_idx + n_w] = p0
+            future_price_seq[current_idx: current_idx + n_w] = p1
+
+            current_idx += n_w
+
+            # Help GC
+            del Xg, yg, pg, windows
+
+        gc.collect()
+
+        return X_seq, pd.Series(y_action_seq, name="target"), y_return_seq, last_price_seq, future_price_seq
 
     def split_data(self, X_seq: np.ndarray, yA_seq: pd.Series, yR_seq: np.ndarray,
                    p0_seq: np.ndarray, pf_seq: np.ndarray, test_size: float = 0.2, val_size: float = 0.2) -> Tuple[
@@ -207,8 +284,25 @@ class LSTMModel(BaseModel):
 
         logging.info(f"Training LSTM pipeline with {lstm_config.epochs} epochs, batch_size={lstm_config.batch_size}")
 
-        clf = B3KerasMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config)
-        clf.fit(X_train, yA_train, yR_train)
+        # Check for GPU availability and configure device
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            logging.info(f"GPU detected: {len(gpus)} device(s). Training will use GPU.")
+            try:
+                # Currently only supported on physical GPUs
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+            except RuntimeError as e:
+                logging.warning(f"Could not set memory growth: {e}")
+            device_name = '/GPU:0'
+        else:
+            logging.info("No GPU detected. Training will use CPU.")
+            device_name = '/CPU:0'
+
+        with tf.device(device_name):
+            clf = B3KerasMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config)
+            clf.fit(X_train, yA_train, yR_train)
+
         logging.info("LSTM multi-task training completed")
 
         self.model = clf
