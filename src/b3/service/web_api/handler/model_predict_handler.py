@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import pandas as pd
 from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
@@ -23,7 +24,7 @@ class ModelPredictHandler:
     2. If no historical data is available, return an informative error message
     3. Suggest using Random Forest for single-point predictions
     """
-    
+
     def __init__(self, preprocessing_service, log_api_activity, pipeline_state, deserialize_model,
                  storage_service=None):
         self._preprocessing_service = preprocessing_service
@@ -88,7 +89,7 @@ class ModelPredictHandler:
 
         return expected_features
 
-    def _align_and_validate_features(self, data_df, expected_features=None, data_source="unknown", 
+    def _align_and_validate_features(self, data_df, expected_features=None, data_source="unknown",
                                      require_all_features=False):
         """
         Consolidated method to align and validate features for prediction.
@@ -110,7 +111,7 @@ class ModelPredictHandler:
         """
         if expected_features is None:
             expected_features = self._get_expected_features()
-        
+
         # Filter to only include features that exist in data and match training features
         available_features = [f for f in expected_features if f in data_df.columns]
         missing_features = set(expected_features) - set(available_features)
@@ -164,7 +165,7 @@ class ModelPredictHandler:
         Uses consolidated feature alignment logic.
         """
         features_df, features_list, missing_features, error_response = self._align_and_validate_features(
-            new_data, 
+            new_data,
             require_all_features=True
         )
 
@@ -225,8 +226,12 @@ class ModelPredictHandler:
             lookback: Number of timesteps for sequence building
             
         Returns:
-            Tuple of (X_seq, error_response, error_code) or (None, None, None) if no historical data
+            Tuple of (X_seq, last_price, error_response, error_code) or (None, None, None, None) if no historical data
         """
+        price_col = 'close'
+        if hasattr(model, 'config') and hasattr(model.config, 'price_col'):
+            price_col = model.config.price_col
+
         # First, try to get historical data from pipeline state
         if 'processed_data' in self._pipeline_state:
             df_processed = pd.DataFrame(self._pipeline_state['processed_data'])
@@ -253,17 +258,21 @@ class ModelPredictHandler:
 
                     if feature_cols is None:
                         logging.error(f"Could not align features for LSTM prediction from pipeline state")
-                        return None, None, None
+                        return None, None, None, None
 
                     # Build sequence
                     X_seq = recent_data[feature_cols].values.astype('float32')
                     X_seq = X_seq.reshape(1, lookback, len(feature_cols))  # Add batch dimension
 
+                    last_price = None
+                    if price_col in recent_data.columns:
+                        last_price = float(recent_data.iloc[-1][price_col])
+
                     logging.info(
                         f"Built LSTM sequence from pipeline state for {ticker}: shape {X_seq.shape}, features: {feature_cols}")
                     if validation_warnings:
                         logging.warning(f"Validation warnings for {ticker}: {validation_warnings}")
-                    return X_seq, None, None
+                    return X_seq, last_price, None, None
 
         # If no pipeline data, try to fetch historical data from Asset API
         logging.info(f"Attempting to fetch historical data from Asset API for ticker {ticker}")
@@ -292,21 +301,25 @@ class ModelPredictHandler:
 
                 if feature_cols is None:
                     logging.error(f"Could not align features for LSTM prediction from Asset API for {ticker}")
-                    return None, None, None
+                    return None, None, None, None
 
                 # Build sequence with aligned features
                 X_seq = recent_data[feature_cols].values.astype('float32')
                 X_seq = X_seq.reshape(1, lookback, len(feature_cols))  # Add batch dimension
 
+                last_price = None
+                if price_col in recent_data.columns:
+                    last_price = float(recent_data.iloc[-1][price_col])
+
                 logging.info(
                     f"Built LSTM sequence from Asset API for {ticker}: shape {X_seq.shape}, features: {feature_cols}")
                 if validation_warnings:
                     logging.warning(f"Validation warnings for {ticker}: {validation_warnings}")
-                return X_seq, None, None
+                return X_seq, last_price, None, None
 
             except Exception as e:
                 logging.error(f"Error processing historical data from API: {str(e)}")
-                return None, None, None
+                return None, None, None, None
 
         # Check if we have raw data that could be processed
         if 'raw_data' in self._pipeline_state:
@@ -317,7 +330,7 @@ class ModelPredictHandler:
         if api_error:
             logging.warning(f"Asset API error: {api_error}")
 
-        return None, None, None
+        return None, None, None, None
 
     def predict_data_handler(self):
         """Make predictions using the trained pipeline."""
@@ -384,7 +397,7 @@ class ModelPredictHandler:
             # Handle LSTM models differently - they need sequences, not single rows
             if is_lstm_model(model_type):
                 # Try to build sequence from historical data if available
-                X_seq, seq_error, seq_code = self._prepare_lstm_prediction_data(ticker, model)
+                X_seq, last_price, seq_error, seq_code = self._prepare_lstm_prediction_data(ticker, model)
 
                 if X_seq is not None:
                     # We have historical data, make LSTM prediction
@@ -404,6 +417,18 @@ class ModelPredictHandler:
                         except Exception as e:
                             logging.warning(f"Could not get prediction probabilities: {e}")
 
+                    # Calculate predicted price if available
+                    predicted_price = None
+                    if last_price is not None and hasattr(model, 'predict_return'):
+                        try:
+                            predicted_return = model.predict_return(X_seq)
+                            # predict_return returns an array, we want the scalar
+                            if isinstance(predicted_return, np.ndarray):
+                                predicted_return = float(predicted_return.flatten()[0])
+                            predicted_price = last_price * (1.0 + predicted_return)
+                        except Exception as e:
+                            logging.warning(f"Could not calculate predicted price: {e}")
+
                     # Get model type name for response
                     model_type_name = type(model).__name__
                     if hasattr(model, 'model') and hasattr(model.model, '__class__'):
@@ -415,6 +440,8 @@ class ModelPredictHandler:
                         'ticker': ticker,
                         'predictions': predictions.tolist() if hasattr(predictions, 'tolist') else predictions,
                         'prediction_probabilities': prediction_probs,
+                        'predicted_price': predicted_price,
+                        'last_price': last_price,
                         'input_shape': X_seq.shape,
                         'model_type': model_type_name,
                         'requested_model_type': model_type,
@@ -485,7 +512,7 @@ class ModelPredictHandler:
             logging.info(f"Prediction data shape: {x_prediction.shape}")
             logging.info(f"Data types: {x_prediction.dtypes.to_dict()}")
             logging.info(f"Data ranges: {x_prediction.describe().to_dict()}")
-            
+
             predictions = model.predict(x_prediction)
             prediction_probs = model.predict_proba(x_prediction).tolist() if hasattr(model, 'predict_proba') else None
             feature_importance = model.feature_importances_.tolist() if hasattr(model, 'feature_importances_') else None

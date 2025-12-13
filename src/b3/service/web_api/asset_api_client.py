@@ -19,7 +19,7 @@ class AssetApiClient:
             return None, str(e)
 
     @staticmethod
-    def fetch_historical_data(ticker: str, days: int = 52, end_date: Optional[str] = None) -> Tuple[
+    def fetch_historical_data(ticker: str, days: int = 52) -> Tuple[
         Optional[List[Dict]], Optional[str]]:
         """
         Fetch historical data for a ticker from the asset data lake API.
@@ -27,8 +27,7 @@ class AssetApiClient:
         Args:
             ticker: Ticker symbol (e.g., "PETR4")
             days: Number of days of historical data to fetch (default: 52 to give 32 for LSTM lookback)
-            end_date: End date in YYYY-MM-DD format (default: today)
-            
+
         Returns:
             Tuple of (historical_data_list, error_message)
         """
