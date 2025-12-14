@@ -106,7 +106,12 @@ class ModelTrainingHandler:
                             "For LSTM models, data must be prepared as sequences or X_features/y_targets must be available")
 
                     x_train = pd.DataFrame(self._pipeline_state['X_features'])
+
+                    # Reconstruct y_train ensuring alignment with x_train (which has RangeIndex from records)
+                    # y_targets dict keys might be original indices (strings from JSON), so we reset index
                     y_train = pd.Series(self._pipeline_state['y_targets'])
+                    y_train = y_train.reset_index(drop=True)
+
                     df_processed = pd.DataFrame(self._pipeline_state.get('processed_data', []))
 
                     if df_processed.empty:
