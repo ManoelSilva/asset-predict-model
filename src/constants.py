@@ -33,7 +33,8 @@ FEATURE_SET = [
     'price_momentum_5',
     'high_breakout_20',
     'bollinger_upper',
-    'stochastic_14'
+    'stochastic_14',
+    'close'
 ]
 
 # Model Random State

@@ -25,10 +25,7 @@ class B3DataLoader(object):
         logging.info("Fetching all data from b3_featured..")
         # Join with historical table to bring in raw close price
         query = f"""
-        SELECT f.*, h.close AS close
-        FROM {self.table_name} AS f
-        LEFT JOIN b3_hist AS h
-          ON f.date = h.date AND f.ticker = h.ticker
+        SELECT f.* FROM {self.table_name} AS f
         """
         return self.conn.execute(query).fetchdf()
 
@@ -44,7 +41,7 @@ class B3DataLoader(object):
         """
         if start_date is None:
             start_date = self._get_default_start_date(ticker)
-        base_select = f"SELECT f.*, h.close AS close FROM {self.table_name} AS f LEFT JOIN b3_hist AS h ON f.date = h.date AND f.ticker = h.ticker"
+        base_select = f"SELECT f.* {self.table_name} AS f"
         if end_date and ticker:
             query = base_select + " WHERE f.date >= ? AND f.date <= ? AND f.ticker = ?"
             params = (start_date, end_date, ticker)
