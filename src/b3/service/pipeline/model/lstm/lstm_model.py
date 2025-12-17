@@ -24,7 +24,7 @@ class LSTMModel(BaseModel):
     def __init__(self, config: Optional[LSTMConfig] = None,
                  storage_service: Optional[DataStorageService] = None):
         """
-        Initialize LSTM pipeline.
+        Initialize LSTM model.
         
         Args:
             config: LSTM configuration
@@ -255,7 +255,7 @@ class LSTMModel(BaseModel):
 
     def train_model(self, X_train: np.ndarray, yA_train: pd.Series, yR_train: np.ndarray, **kwargs) -> B3KerasMTLModel:
         """
-        Train LSTM Multi-Task Learning pipeline.
+        Train LSTM Multi-Task Learning model.
         
         Args:
             X_train: Training feature sequences
@@ -269,7 +269,6 @@ class LSTMModel(BaseModel):
         lookback = kwargs.get('lookback', self.config.lookback)
         n_features = kwargs.get('n_features', X_train.shape[2])
 
-        # Create LSTM rf from pipeline rf
         lstm_config = LSTMConfig(
             lookback=lookback,
             horizon=self.config.horizon,
@@ -282,7 +281,7 @@ class LSTMModel(BaseModel):
             loss_weight_return=self.config.loss_weight_return
         )
 
-        logging.info(f"Training LSTM pipeline with {lstm_config.epochs} epochs, batch_size={lstm_config.batch_size}")
+        logging.info(f"Training LSTM model with {lstm_config.epochs} epochs, batch_size={lstm_config.batch_size}")
 
         # Check for GPU availability and configure device
         gpus = tf.config.list_physical_devices('GPU')
@@ -313,7 +312,7 @@ class LSTMModel(BaseModel):
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
-        Make action predictions using trained LSTM pipeline.
+        Make action predictions using trained LSTM model.
         
         Args:
             X: Feature sequences for prediction
@@ -331,7 +330,7 @@ class LSTMModel(BaseModel):
 
     def predict_return(self, X: np.ndarray) -> np.ndarray:
         """
-        Make return predictions using trained LSTM pipeline.
+        Make return predictions using trained LSTM model.
         
         Args:
             X: Feature sequences for prediction
@@ -349,7 +348,7 @@ class LSTMModel(BaseModel):
 
     def predict_price(self, X_window: pd.DataFrame, lookback: int = None, price_col: str = None) -> float:
         """
-        Predict next-step price using trained LSTM pipeline from a single asset window.
+        Predict next-step price using trained LSTM model from a single asset window.
         
         Args:
             X_window: Last lookback rows of features including price_col
@@ -387,33 +386,33 @@ class LSTMModel(BaseModel):
 
     def save_model(self, model: B3KerasMTLModel, model_dir: str) -> str:
         """
-        Save LSTM pipeline to storage.
+        Save LSTM model to storage.
         
         Args:
             model: Trained B3KerasMTLModel
-            model_dir: Directory to save the pipeline
+            model_dir: Directory to save the model
             
         Returns:
-            Path to saved pipeline
+            Path to saved model
         """
         return self.saving_service.save_model(model.model, model_dir)
 
     def load_model(self, model_path: str) -> B3KerasMTLModel:
         """
-        Load LSTM pipeline from storage.
+        Load LSTM model from storage.
         
         Args:
-            model_path: Path to saved pipeline
+            model_path: Path to saved model
             
         Returns:
             Loaded B3KerasMTLModel
         """
         keras_model = self.saving_service.load_model(model_path)
 
-        # Create wrapper pipeline
+        # Create wrapper model
         model = B3KerasMTLModel(
             input_timesteps=self.config.lookback,
-            input_features=keras_model.input_shape[2],  # Get feature count from loaded pipeline
+            input_features=keras_model.input_shape[2],  # Get feature count from loaded model
             config=LSTMConfig(
                 lookback=self.config.lookback,
                 horizon=self.config.horizon,
@@ -438,7 +437,7 @@ class LSTMModel(BaseModel):
                        p0_test: np.ndarray = None, pf_test: np.ndarray = None,
                        **kwargs) -> Dict[str, Any]:
         """
-        Evaluate LSTM pipeline with both classification and regression metrics.
+        Evaluate LSTM model with both classification and regression metrics.
         
         Args:
             model: Trained B3KerasMTLModel

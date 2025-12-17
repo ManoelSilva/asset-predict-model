@@ -105,10 +105,8 @@ class CompleteTrainingHandler:
             self._pipeline_state['model_type'] = model_type
             self._pipeline_state['model_path'] = model_path
 
-            # For backward compatibility, try to load and serialize the pipeline if it's a Random Forest
             if is_rf_model(model_type):
                 try:
-                    # Get persist service at runtime
                     persist_service = ModelFactory.get_persist_service(model_type, self._storage_service)
                     model = persist_service.load_model(persist_service.get_model_path(model_dir))
                     model_b64 = self._serialize_model(model)
