@@ -408,14 +408,6 @@ class ModelPredictHandler:
                     prediction_probs = None
                     if hasattr(model, 'predict_proba'):
                         prediction_probs = model.predict_proba(X_seq).tolist()
-                    elif hasattr(model, 'model') and hasattr(model.model, 'predict'):
-                        # For LSTM models, get probabilities from the underlying Keras model
-                        try:
-                            keras_pred = model.model.predict(X_seq, verbose=0)
-                            if isinstance(keras_pred, dict) and 'action' in keras_pred:
-                                prediction_probs = keras_pred['action'].tolist()
-                        except Exception as e:
-                            logging.warning(f"Could not get prediction probabilities: {e}")
 
                     # Calculate predicted price if available
                     predicted_price = None

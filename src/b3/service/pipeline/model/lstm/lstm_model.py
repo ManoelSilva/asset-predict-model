@@ -3,12 +3,12 @@ from typing import Dict, Any, Tuple, Optional
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
+import torch
 from asset_model_data_storage.data_storage_service import DataStorageService
 from pandas import DataFrame, Series
 from sklearn.model_selection import train_test_split
 
-from b3.service.pipeline.model.lstm.keras_mtl_model import B3KerasMTLModel
+from b3.service.pipeline.model.lstm.pytorch_mtl_model import B3PytorchMTLModel
 from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
 from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
@@ -18,7 +18,7 @@ from constants import RANDOM_STATE
 
 class LSTMModel(BaseModel):
     """
-    LSTM Multi-Task Learning implementation for B3 asset prediction.
+    LSTM Multi-Task Learning implementation for B3 asset prediction using PyTorch.
     """
 
     def __init__(self, config: Optional[LSTMConfig] = None,
@@ -34,6 +34,7 @@ class LSTMModel(BaseModel):
         self.storage_service = storage_service or DataStorageService()
         self.saving_service = LSTMPersistService(self.storage_service)
         self.evaluation_service = B3ModelEvaluationService(self.storage_service)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def prepare_data(self, X: pd.DataFrame, y: pd.Series, df_processed: pd.DataFrame = None, **kwargs) -> Tuple[
         np.ndarray, pd.Series, np.ndarray, np.ndarray, np.ndarray]:
@@ -85,74 +86,75 @@ class LSTMModel(BaseModel):
                 return gdf.sort_values(col)
         return gdf
 
-    @staticmethod
-    def _build_sequences(X_df: DataFrame, y_action: Series, df_full: DataFrame,
+    def _build_sequences(self, X_df: DataFrame, y_action: Series, df_full: DataFrame,
                          price_col: str = "close", lookback: int = 32, horizon: int = 1
                          ) -> Tuple[np.ndarray, Series, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Build sequences for multitask learning.
-
-        Returns:
-            X_seq: (N, lookback, n_features)
-            y_action_seq: Series of action labels aligned to sequences
-            y_return_seq: (N,) predicted target returns over horizon
-            last_price_seq: (N,) price at prediction time (for price mapping)
-            future_price_seq: (N,) actual future price at t+h (for regression eval)
+        Build sequences for multitask learning using PyTorch for acceleration.
+        Optimized to avoid repeated dataframe filtering.
         """
         import gc
         features = X_df.columns.tolist()
         n_features = len(features)
+        device = self.device
 
         # Pre-process targets globally
         y_processed = y_action.astype(str).str.replace("_target", "", regex=False)
 
-        # 1. Collect Valid Group Data and Calculate Total Size
-        processed_groups = []
-        total_sequences = 0
+        # ---------------------------------------------------------
+        # 1. OPTIMIZED PREPARATION (Replaces the slow ticker loop)
+        # ---------------------------------------------------------
 
-        # Use unique tickers to iterate
-        unique_tickers = df_full["ticker"].unique() if "ticker" in df_full.columns else [None]
+        # Ensure we only work with indices present in both DataFrames
+        common_indices = df_full.index.intersection(X_df.index)
+        if len(common_indices) <= lookback + horizon:
+            return (np.zeros((0, lookback, n_features), dtype="float32"),
+                    pd.Series([], dtype="object"),
+                    np.zeros((0,), dtype="float32"),
+                    np.zeros((0,), dtype="float32"),
+                    np.zeros((0,), dtype="float32"))
 
-        for ticker in unique_tickers:
-            if ticker is None:
-                gdf = df_full
-            else:
-                gdf = df_full[df_full["ticker"] == ticker]
+        # Create a working subset aligned with X_df
+        # We work with this subset to guarantee index alignment
+        df_subset = df_full.loc[common_indices].copy()
 
-            # Sort by date
-            for col in ["date", "datetime", "timestamp"]:
-                if col in gdf.columns:
-                    gdf = gdf.sort_values(col)
-                    break
+        # Determine sort columns (Ticker + Date)
+        date_col = next((c for c in ["date", "datetime", "timestamp"] if c in df_subset.columns), None)
+        sort_cols = []
+        if "ticker" in df_subset.columns:
+            sort_cols.append("ticker")
+        if date_col:
+            sort_cols.append(date_col)
 
-            indices = gdf.index
+        # Global Sort: This is O(N log N) and much faster than N * O(N) filtering
+        if sort_cols:
+            df_subset = df_subset.sort_values(sort_cols)
 
-            # Extract Data
-            # Optimized: check bounds first
-            if len(gdf) <= lookback + horizon:
-                continue
+        # Extract Aligned Data (CPU)
+        # Using the sorted index ensures all arrays are perfectly aligned by row
+        # .values creates a copy, which is fine and safer for the next steps
+        sorted_indices = df_subset.index
 
-            # Intersection check (fast fail)
-            if not indices.isin(X_df.index).all():
-                common = indices.intersection(X_df.index)
-                if len(common) <= lookback + horizon: continue
-                gdf = gdf.loc[common]
-                indices = common
+        X_all = X_df.loc[sorted_indices, features].values.astype("float32")
+        y_all = y_processed.loc[sorted_indices].values
 
-            # Extract arrays (small copy)
-            Xg = X_df.loc[indices, features].values.astype("float32")
-            yg = y_processed.loc[indices].values
+        if price_col not in df_subset.columns:
+            raise ValueError(f"Price column '{price_col}' not found")
+        p_all = df_subset[price_col].astype(float).values
 
-            if price_col not in gdf.columns:
-                raise ValueError(f"Price column '{price_col}' not found in dataframe")
-            pg = gdf[price_col].astype(float).values
+        # Calculate Group Sizes
+        # Since data is sorted by ticker, we can simply count group sizes
+        if "ticker" in df_subset.columns:
+            # groupby size on a sorted dataframe is extremely fast
+            group_sizes = df_subset.groupby("ticker", sort=False).size().values
+        else:
+            group_sizes = np.array([len(df_subset)])
 
-            n_samples = len(Xg)
-            n_windows = n_samples - horizon - lookback
-
-            if n_windows > 0:
-                processed_groups.append((Xg, yg, pg, n_windows))
-                total_sequences += n_windows
+        # Calculate valid windows per group
+        # Each group produces (size - lookback - horizon) valid targets
+        # Note: The original logic used `n_samples - horizon - lookback`
+        valid_windows_per_group = np.maximum(0, group_sizes - horizon - lookback)
+        total_sequences = valid_windows_per_group.sum()
 
         if total_sequences == 0:
             return (np.zeros((0, lookback, n_features), dtype="float32"),
@@ -161,56 +163,91 @@ class LSTMModel(BaseModel):
                     np.zeros((0,), dtype="float32"),
                     np.zeros((0,), dtype="float32"))
 
-        logging.info(
-            f"Allocating memory for {total_sequences} sequences (approx {total_sequences * lookback * n_features * 4 / 1e9:.2f} GB)...")
+        logging.info(f"Allocating tensors for {total_sequences} sequences on {device}...")
 
-        # 2. Pre-allocate arrays
-        X_seq = np.zeros((total_sequences, lookback, n_features), dtype="float32")
+        # ---------------------------------------------------------
+        # 2. PRE-ALLOCATION
+        # ---------------------------------------------------------
+        try:
+            X_seq = torch.zeros((total_sequences, lookback, n_features), dtype=torch.float32, device=device)
+            y_return_seq = torch.zeros((total_sequences,), dtype=torch.float32, device=device)
+            last_price_seq = torch.zeros((total_sequences,), dtype=torch.float32, device=device)
+            future_price_seq = torch.zeros((total_sequences,), dtype=torch.float32, device=device)
+        except RuntimeError as e:
+            logging.warning(f"Allocation failed on {device}: {e}. Falling back to CPU.")
+            device = torch.device('cpu')
+            X_seq = torch.zeros((total_sequences, lookback, n_features), dtype=torch.float32, device=device)
+            y_return_seq = torch.zeros((total_sequences,), dtype=torch.float32, device=device)
+            last_price_seq = torch.zeros((total_sequences,), dtype=torch.float32, device=device)
+            future_price_seq = torch.zeros((total_sequences,), dtype=torch.float32, device=device)
+
         y_action_seq = np.empty((total_sequences,), dtype=object)
-        y_return_seq = np.zeros((total_sequences,), dtype="float32")
-        last_price_seq = np.zeros((total_sequences,), dtype="float32")
-        future_price_seq = np.zeros((total_sequences,), dtype="float32")
 
-        # 3. Fill Arrays
-        current_idx = 0
+        # ---------------------------------------------------------
+        # 3. VECTORIZED PROCESSING (Sliced Iteration)
+        # ---------------------------------------------------------
 
-        # Iterate and clear memory as we go
-        while processed_groups:
-            Xg, yg, pg, n_w = processed_groups.pop(0)
+        start_idx = 0  # Index in the source arrays (X_all, etc.)
+        current_seq_idx = 0  # Index in the destination tensors (X_seq, etc.)
 
-            # Vectorized Windowing
-            # Shape: (n_w, n_features, lookback) -> need transpose
-            windows = np.lib.stride_tricks.sliding_window_view(Xg, lookback, axis=0)
-            windows = windows[:n_w]
+        for size, n_w in zip(group_sizes, valid_windows_per_group):
+            if n_w > 0:
+                # 1. Slice the chunk for this ticker (Zero-copy view usually)
+                Xg = X_all[start_idx: start_idx + size]
+                yg = y_all[start_idx: start_idx + size]
+                pg = p_all[start_idx: start_idx + size]
 
-            # Transpose to (Batch, Time, Features)
-            # sliding_window_view puts window dim at the end: (Batch, Features, Time)
-            # LSTM expects (Batch, Time, Features) -> swap last two axes
-            windows = windows.transpose(0, 2, 1)
+                # 2. Move Chunk to GPU
+                Xg_tensor = torch.tensor(Xg, dtype=torch.float32, device=device)
+                pg_tensor = torch.tensor(pg, dtype=torch.float32, device=device)
 
-            X_seq[current_idx: current_idx + n_w] = windows
+                # 3. Vectorized Windowing (PyTorch Unfold)
+                # Shape: (n_windows_raw, n_features, lookback)
+                windows = Xg_tensor.unfold(0, lookback, 1)
 
-            # Targets
-            y_action_seq[current_idx: current_idx + n_w] = yg[lookback: lookback + n_w]
+                # We only need the first n_w windows that have valid future targets
+                # The unfold creates (size - lookback + 1) windows.
+                # We need exactly n_w.
+                windows = windows[:n_w]
 
-            p0 = pg[lookback - 1: lookback - 1 + n_w]
-            p1 = pg[lookback - 1 + horizon: lookback - 1 + horizon + n_w]
+                # Transpose to (Batch, Time, Features)
+                windows = windows.transpose(1, 2)
 
-            with np.errstate(divide='ignore', invalid='ignore'):
+                # 4. Fill Tensors
+                X_seq[current_seq_idx: current_seq_idx + n_w] = windows
+
+                # Targets (CPU)
+                # The target for a window ending at t is the action at t
+                # Our windows end at index `lookback-1` (0-based) relative to Xg start
+                # So we take targets from lookback to lookback + n_w
+                y_action_seq[current_seq_idx: current_seq_idx + n_w] = yg[lookback: lookback + n_w]
+
+                # Price Calculations (GPU)
+                p0 = pg_tensor[lookback - 1: lookback - 1 + n_w]
+                p1 = pg_tensor[lookback - 1 + horizon: lookback - 1 + horizon + n_w]
+
                 ret = (p1 / p0) - 1.0
 
-            y_return_seq[current_idx: current_idx + n_w] = ret
-            last_price_seq[current_idx: current_idx + n_w] = p0
-            future_price_seq[current_idx: current_idx + n_w] = p1
+                y_return_seq[current_seq_idx: current_seq_idx + n_w] = ret
+                last_price_seq[current_seq_idx: current_seq_idx + n_w] = p0
+                future_price_seq[current_seq_idx: current_seq_idx + n_w] = p1
 
-            current_idx += n_w
+                current_seq_idx += n_w
 
-            # Help GC
-            del Xg, yg, pg, windows
+                # Clear GPU temp vars
+                del Xg_tensor, pg_tensor, windows, p0, p1, ret
+
+            # Move to next group
+            start_idx += size
 
         gc.collect()
 
-        return X_seq, pd.Series(y_action_seq, name="target"), y_return_seq, last_price_seq, future_price_seq
+        logging.info("Moving sequences to CPU/Numpy...")
+        return (X_seq.cpu().numpy(),
+                pd.Series(y_action_seq, name="target"),
+                y_return_seq.cpu().numpy(),
+                last_price_seq.cpu().numpy(),
+                future_price_seq.cpu().numpy())
 
     def split_data(self, X_seq: np.ndarray, yA_seq: pd.Series, yR_seq: np.ndarray,
                    p0_seq: np.ndarray, pf_seq: np.ndarray, test_size: float = 0.2, val_size: float = 0.2) -> Tuple[
@@ -253,7 +290,8 @@ class LSTMModel(BaseModel):
                 p0_train, p0_val, p0_test,
                 pf_train, pf_val, pf_test)
 
-    def train_model(self, X_train: np.ndarray, yA_train: pd.Series, yR_train: np.ndarray, **kwargs) -> B3KerasMTLModel:
+    def train_model(self, X_train: np.ndarray, yA_train: pd.Series, yR_train: np.ndarray,
+                    **kwargs) -> B3PytorchMTLModel:
         """
         Train LSTM Multi-Task Learning model.
         
@@ -264,7 +302,7 @@ class LSTMModel(BaseModel):
             **kwargs: Additional training parameters
             
         Returns:
-            Trained B3KerasMTLModel
+            Trained B3PytorchMTLModel
         """
         lookback = kwargs.get('lookback', self.config.lookback)
         n_features = kwargs.get('n_features', X_train.shape[2])
@@ -281,26 +319,12 @@ class LSTMModel(BaseModel):
             loss_weight_return=self.config.loss_weight_return
         )
 
-        logging.info(f"Training LSTM model with {lstm_config.epochs} epochs, batch_size={lstm_config.batch_size}")
+        logging.info(
+            f"Training LSTM model (PyTorch) with {lstm_config.epochs} epochs, batch_size={lstm_config.batch_size}")
 
-        # Check for GPU availability and configure device
-        gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
-            logging.info(f"GPU detected: {len(gpus)} device(s). Training will use GPU.")
-            try:
-                # Currently only supported on physical GPUs
-                for gpu in gpus:
-                    tf.config.experimental.set_memory_growth(gpu, True)
-            except RuntimeError as e:
-                logging.warning(f"Could not set memory growth: {e}")
-            device_name = '/GPU:0'
-        else:
-            logging.info("No GPU detected. Training will use CPU.")
-            device_name = '/CPU:0'
-
-        with tf.device(device_name):
-            clf = B3KerasMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config)
-            clf.fit(X_train, yA_train, yR_train)
+        clf = B3PytorchMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config,
+                                device=self.device)
+        clf.fit(X_train, yA_train, yR_train)
 
         logging.info("LSTM multi-task training completed")
 
@@ -327,6 +351,24 @@ class LSTMModel(BaseModel):
             raise ValueError("Invalid input data for prediction")
 
         return self.model.predict(X)
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """
+        Make probability predictions using trained LSTM model.
+        
+        Args:
+            X: Feature sequences for prediction
+            
+        Returns:
+            Array of probability predictions
+        """
+        if not self.is_trained or self.model is None:
+            raise ValueError("Model must be trained before making predictions")
+
+        if not self.validate_data(X):
+            raise ValueError("Invalid input data for prediction")
+
+        return self.model.predict_proba(X)
 
     def predict_return(self, X: np.ndarray) -> np.ndarray:
         """
@@ -384,12 +426,12 @@ class LSTMModel(BaseModel):
 
         return predicted_price
 
-    def save_model(self, model: B3KerasMTLModel, model_dir: str) -> str:
+    def save_model(self, model: B3PytorchMTLModel, model_dir: str) -> str:
         """
         Save LSTM model to storage.
         
         Args:
-            model: Trained B3KerasMTLModel
+            model: Trained B3PytorchMTLModel
             model_dir: Directory to save the model
             
         Returns:
@@ -397,7 +439,7 @@ class LSTMModel(BaseModel):
         """
         return self.saving_service.save_model(model.model, model_dir)
 
-    def load_model(self, model_path: str) -> B3KerasMTLModel:
+    def load_model(self, model_path: str) -> B3PytorchMTLModel:
         """
         Load LSTM model from storage.
         
@@ -405,33 +447,49 @@ class LSTMModel(BaseModel):
             model_path: Path to saved model
             
         Returns:
-            Loaded B3KerasMTLModel
+            Loaded B3PytorchMTLModel
         """
-        keras_model = self.saving_service.load_model(model_path)
+        checkpoint = self.saving_service.load_model(model_path)
+
+        # Extract config from checkpoint
+        input_features = checkpoint['input_features']
+        hidden_size = checkpoint['hidden_size']
+        dropout = checkpoint['dropout']
+        state_dict = checkpoint['state_dict']
+
+        # Update config with loaded architecture params
+        # Note: We prefer to use the loaded architecture over self.config for the model structure
+        # to ensure the weights match.
+
+        model_config = LSTMConfig(
+            lookback=self.config.lookback,
+            # This might be part of model/wrapper logic, but input_features drives the model input size.
+            horizon=self.config.horizon,
+            units=hidden_size,
+            dropout=dropout,
+            # Other params from current config or defaults
+            learning_rate=self.config.learning_rate,
+            epochs=self.config.epochs,
+            batch_size=self.config.batch_size,
+            loss_weight_action=self.config.loss_weight_action,
+            loss_weight_return=self.config.loss_weight_return
+        )
 
         # Create wrapper model
-        model = B3KerasMTLModel(
+        model = B3PytorchMTLModel(
             input_timesteps=self.config.lookback,
-            input_features=keras_model.input_shape[2],  # Get feature count from loaded model
-            config=LSTMConfig(
-                lookback=self.config.lookback,
-                horizon=self.config.horizon,
-                units=self.config.units,
-                dropout=self.config.dropout,
-                learning_rate=self.config.learning_rate,
-                epochs=self.config.epochs,
-                batch_size=self.config.batch_size,
-                loss_weight_action=self.config.loss_weight_action,
-                loss_weight_return=self.config.loss_weight_return
-            )
+            input_features=input_features,
+            config=model_config,
+            device=self.device
         )
-        model.model = keras_model
+
+        model.model.load_state_dict(state_dict)
 
         self.model = model
         self.is_trained = True
         return model
 
-    def evaluate_model(self, model: B3KerasMTLModel, X_val: np.ndarray, yA_val: pd.Series,
+    def evaluate_model(self, model: B3PytorchMTLModel, X_val: np.ndarray, yA_val: pd.Series,
                        X_test: np.ndarray, yA_test: pd.Series, df_processed: pd.DataFrame,
                        p0_val: np.ndarray = None, pf_val: np.ndarray = None,
                        p0_test: np.ndarray = None, pf_test: np.ndarray = None,
@@ -440,7 +498,7 @@ class LSTMModel(BaseModel):
         Evaluate LSTM model with both classification and regression metrics.
         
         Args:
-            model: Trained B3KerasMTLModel
+            model: Trained B3PytorchMTLModel
             X_val: Validation feature sequences
             yA_val: Validation action targets
             X_test: Test feature sequences
