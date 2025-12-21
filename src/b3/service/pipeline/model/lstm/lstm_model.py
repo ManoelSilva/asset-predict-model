@@ -1,4 +1,6 @@
 import logging
+import gc
+import os
 from typing import Dict, Any, Tuple, Optional
 
 import numpy as np
@@ -31,10 +33,50 @@ class LSTMModel(BaseModel):
             storage_service: Data storage service for saving/loading models
         """
         super().__init__(config or LSTMConfig())
-        self.storage_service = storage_service or DataStorageService()
-        self.saving_service = LSTMPersistService(self.storage_service)
-        self.evaluation_service = B3ModelEvaluationService(self.storage_service)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._storage_service = storage_service or DataStorageService()
+        self._saving_service = LSTMPersistService(self._storage_service)
+        self._evaluation_service = B3ModelEvaluationService(self._storage_service)
+        self._device = torch.device(
+            "cuda" if torch.cuda.is_available() and os.environ.get('cuda_enabled', False) else "cpu")
+
+    def run_pipeline(self, X: pd.DataFrame, y: pd.Series, df_processed: pd.DataFrame, config: Any) -> Tuple[str, Dict]:
+        """
+        Runs the full LSTM training pipeline.
+        """
+        logging.info("Starting LSTM training pipeline")
+
+        # 1. Prepare
+        lstm_config_dict = config.get_lstm_config_dict()
+        X_seq, yA_seq, yR_seq, p0_seq, pf_seq = self.prepare_data(
+            X, y, df_processed, **lstm_config_dict
+        )
+
+        # 2. Split
+        (X_train, X_val, X_test,
+         yA_train, yA_val, yA_test,
+         yR_train, yR_val, yR_test,
+         p0_train, p0_val, p0_test,
+         pf_train, pf_val, pf_test) = self.split_data(
+            X_seq, yA_seq, yR_seq, p0_seq, pf_seq, config.test_size, config.val_size
+        )
+
+        # 3. Train
+        # Note: using X.shape[1] for n_features which is the number of features in the raw dataframe
+        trained_model = self.train_model(
+            X_train, yA_train, yR_train, lookback=config.lookback, n_features=X.shape[1]
+        )
+
+        # 4. Evaluate
+        evaluation_results = self.evaluate_model(
+            trained_model, X_val, yA_val, X_test, yA_test, df_processed,
+            p0_val=p0_val, pf_val=pf_val, p0_test=p0_test, pf_test=pf_test
+        )
+
+        # 5. Save
+        model_path = self.save_model(trained_model, config.model_dir)
+        logging.info(f"LSTM-MTL training completed successfully. Model saved at: {model_path}")
+
+        return model_path, evaluation_results
 
     def prepare_data(self, X: pd.DataFrame, y: pd.Series, df_processed: pd.DataFrame = None, **kwargs) -> Tuple[
         np.ndarray, pd.Series, np.ndarray, np.ndarray, np.ndarray]:
@@ -93,10 +135,9 @@ class LSTMModel(BaseModel):
         Build sequences for multitask learning using PyTorch for acceleration.
         Optimized to avoid repeated dataframe filtering.
         """
-        import gc
         features = X_df.columns.tolist()
         n_features = len(features)
-        device = self.device
+        device = self._device
 
         # Pre-process targets globally
         y_processed = y_action.astype(str).str.replace("_target", "", regex=False)
@@ -323,7 +364,7 @@ class LSTMModel(BaseModel):
             f"Training LSTM model (PyTorch) with {lstm_config.epochs} epochs, batch_size={lstm_config.batch_size}")
 
         clf = B3PytorchMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config,
-                                device=self.device)
+                                device=self._device)
         clf.fit(X_train, yA_train, yR_train)
 
         logging.info("LSTM multi-task training completed")
@@ -557,7 +598,7 @@ class LSTMModel(BaseModel):
         Returns:
             Path to saved model
         """
-        return self.saving_service.save_model(model.model, model_dir)
+        return self._saving_service.save_model(model.model, model_dir)
 
     def load_model(self, model_path: str) -> B3PytorchMTLModel:
         """
@@ -569,7 +610,7 @@ class LSTMModel(BaseModel):
         Returns:
             Loaded B3PytorchMTLModel
         """
-        checkpoint = self.saving_service.load_model(model_path)
+        checkpoint = self._saving_service.load_model(model_path)
 
         # Extract config from checkpoint
         input_features = checkpoint['input_features']
@@ -600,7 +641,7 @@ class LSTMModel(BaseModel):
             input_timesteps=self.config.lookback,
             input_features=input_features,
             config=model_config,
-            device=self.device
+            device=self._device
         )
 
         model.model.load_state_dict(state_dict)
@@ -644,7 +685,7 @@ class LSTMModel(BaseModel):
         self._enrich_df_with_predictions(df_viz, max_samples=20)
 
         # Evaluate classification
-        classification_results = self.evaluation_service.evaluate_model_comprehensive(
+        classification_results = self._evaluation_service.evaluate_model_comprehensive(
             model, X_val, yA_val, X_test, yA_test, df_viz,
             model_name=model_name, persist_results=persist_results
         )
@@ -661,8 +702,8 @@ class LSTMModel(BaseModel):
             price_test_pred = p0_test * (1.0 + ret_test_pred)
 
             # Evaluate regression
-            reg_val = self.evaluation_service.evaluate_regression(pf_val, price_val_pred)
-            reg_test = self.evaluation_service.evaluate_regression(pf_test, price_test_pred)
+            reg_val = self._evaluation_service.evaluate_regression(pf_val, price_val_pred)
+            reg_test = self._evaluation_service.evaluate_regression(pf_test, price_test_pred)
 
             regression_results = {
                 'validation_regression': reg_val,
@@ -678,13 +719,13 @@ class LSTMModel(BaseModel):
                     if 'validation' in classification_results and 'evaluation_id' in classification_results[
                         'validation']:
                         val_id = classification_results['validation']['evaluation_id']
-                        self.evaluation_service.update_evaluation_metrics(val_id, {'price_regression': reg_val})
+                        self._evaluation_service.update_evaluation_metrics(val_id, {'price_regression': reg_val})
                         logging.info(f"Updated validation evaluation {val_id} with regression metrics")
 
                     # Update test record
                     if 'test' in classification_results and 'evaluation_id' in classification_results['test']:
                         test_id = classification_results['test']['evaluation_id']
-                        self.evaluation_service.update_evaluation_metrics(test_id, {'price_regression': reg_test})
+                        self._evaluation_service.update_evaluation_metrics(test_id, {'price_regression': reg_test})
                         logging.info(f"Updated test evaluation {test_id} with regression metrics")
                 except Exception as e:
                     logging.error(f"Error persisting regression metrics: {str(e)}")

@@ -8,7 +8,7 @@ from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
 from b3.service.pipeline.model.factory import ModelFactory
-from b3.service.pipeline.model.manager import ModelManagerService
+from b3.service.pipeline.model.manager import CompletePipelineManagerService
 from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model, normalize_model_type
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_N_JOBS, MODEL_STORAGE_KEY
 
@@ -19,7 +19,7 @@ class ModelTrainingHandler:
         self._log_api_activity = log_api_activity
         self._serialize_model = serialize_model
         self._storage_service = storage_service or DataStorageService()
-        self._model_manager_service = ModelManagerService(self._storage_service)
+        self._model_manager_service = CompletePipelineManagerService(self._storage_service)
         self._executor = ThreadPoolExecutor(max_workers=1)
 
     def train_model_handler(self):

@@ -26,9 +26,9 @@ class B3ModelEvaluationService:
             storage_service: Data storage service instance (optional, creates default if not provided)
             evaluation_data_loader: Evaluation data loader instance (optional, creates default if not provided)
         """
-        self.storage_service = storage_service or DataStorageService()
-        self.evaluation_data_loader = evaluation_data_loader or EvaluationDataLoader()
-        self.plotter = B3DashboardPlotter(storage_service)
+        self._storage_service = storage_service or DataStorageService()
+        self._evaluation_data_loader = evaluation_data_loader or EvaluationDataLoader()
+        self._plotter = B3DashboardPlotter(storage_service)
 
     @staticmethod
     def _generate_evaluation_id(model_name: str, dataset_type: str) -> str:
@@ -86,7 +86,7 @@ class B3ModelEvaluationService:
                 evaluation_id = self._generate_evaluation_id(model_name, dataset_type)
 
                 # Save evaluation results
-                success = self.evaluation_data_loader.save_evaluation(
+                success = self._evaluation_data_loader.save_evaluation(
                     evaluation_id=evaluation_id,
                     model_name=model_name,
                     dataset_type=dataset_type,
@@ -118,14 +118,14 @@ class B3ModelEvaluationService:
         logging.info("Generating evaluation visualization...")
 
         # Create directory if using local storage
-        if self.storage_service.is_local_storage():
+        if self._storage_service.is_local_storage():
             os.makedirs(save_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         plot_filename = f"action_samples_by_ticker_{timestamp}.png"
         plot_path = os.path.join(save_dir, plot_filename).replace('\\', '/')
 
-        self.plotter.plot_action_samples_by_ticker(df, save_path=plot_path)
+        self._plotter.plot_action_samples_by_ticker(df, save_path=plot_path)
         logging.info(f"Evaluation visualization saved: {plot_path}")
 
         return plot_path
@@ -220,7 +220,7 @@ class B3ModelEvaluationService:
         Returns:
             bool: Success status
         """
-        return self.evaluation_data_loader.update_metrics_json(evaluation_id, additional_metrics)
+        return self._evaluation_data_loader.update_metrics_json(evaluation_id, additional_metrics)
 
     def get_evaluation_history(self, model_name: str = None) -> DataFrame:
         """
@@ -233,9 +233,9 @@ class B3ModelEvaluationService:
             DataFrame: Evaluation history data
         """
         if model_name:
-            return self.evaluation_data_loader.fetch_by_model(model_name)
+            return self._evaluation_data_loader.fetch_by_model(model_name)
         else:
-            return self.evaluation_data_loader.fetch_all()
+            return self._evaluation_data_loader.fetch_all()
 
     def get_evaluation_summary(self) -> DataFrame:
         """
@@ -244,10 +244,10 @@ class B3ModelEvaluationService:
         Returns:
             DataFrame: Summary statistics
         """
-        return self.evaluation_data_loader.get_evaluation_summary()
+        return self._evaluation_data_loader.get_evaluation_summary()
 
     def close(self):
         """Close the evaluation data loader connection."""
-        if hasattr(self, 'evaluation_data_loader') and self.evaluation_data_loader:
-            self.evaluation_data_loader.close()
+        if hasattr(self, 'evaluation_data_loader') and self._evaluation_data_loader:
+            self._evaluation_data_loader.close()
             logging.info("Evaluation data loader connection closed")

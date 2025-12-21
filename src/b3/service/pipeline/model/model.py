@@ -27,6 +27,22 @@ class BaseModel(ABC):
         self.model_type = self.__class__.__name__
 
     @abstractmethod
+    def run_pipeline(self, X: pd.DataFrame, y: pd.Series, df_processed: pd.DataFrame, config: Any) -> Tuple[str, Dict]:
+        """
+        Runs the full training pipeline: prepare -> split -> train -> evaluate -> save.
+        
+        Args:
+            X: Raw feature dataframe
+            y: Raw target series
+            df_processed: Full processed dataframe (for context/validation/viz)
+            config: Training configuration
+            
+        Returns:
+            Tuple[str, Dict]: Path to saved model and evaluation results
+        """
+        pass
+
+    @abstractmethod
     def prepare_data(self, X: pd.DataFrame, y: pd.Series, **kwargs) -> Tuple[Any, Any]:
         """
         Prepare data for training/prediction based on model requirements.

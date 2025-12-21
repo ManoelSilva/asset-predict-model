@@ -29,9 +29,37 @@ class RandomForestModel(BaseModel):
             storage_service: Data storage service for saving/loading models
         """
         super().__init__(config or RandomForestConfig())
-        self.storage_service = storage_service or DataStorageService()
-        self.saving_service = RandomForestPersistService(self.storage_service)
-        self.evaluation_service = B3ModelEvaluationService(self.storage_service)
+        self._storage_service = storage_service or DataStorageService()
+        self._saving_service = RandomForestPersistService(self._storage_service)
+        self._evaluation_service = B3ModelEvaluationService(self._storage_service)
+
+    def run_pipeline(self, X: pd.DataFrame, y: pd.Series, df_processed: pd.DataFrame, config: Any) -> Tuple[str, Dict]:
+        """
+        Runs the full Random Forest training pipeline.
+        """
+        logging.info("Starting Random Forest training pipeline")
+
+        # 1. Prepare
+        X_prepared, y_prepared = self.prepare_data(X, y)
+
+        # 2. Split
+        X_train, X_val, X_test, y_train, y_val, y_test = self.split_data(
+            X_prepared, y_prepared, config.test_size, config.val_size
+        )
+
+        # 3. Train
+        trained_model = self.train_model(X_train, y_train, n_jobs=config.n_jobs)
+
+        # 4. Evaluate
+        evaluation_results = self.evaluate_model(
+            trained_model, X_val, y_val, X_test, y_test, df_processed
+        )
+
+        # 5. Save
+        model_path = self.save_model(trained_model, config.model_dir)
+        logging.info(f"Random Forest training completed successfully. Model saved at: {model_path}")
+
+        return model_path, evaluation_results
 
     def prepare_data(self, X: pd.DataFrame, y: pd.Series, **kwargs) -> Tuple[pd.DataFrame, pd.Series]:
         """
@@ -127,7 +155,6 @@ class RandomForestModel(BaseModel):
         )
 
         random_search.fit(X_train, y_train)
-        print("Best parameters found:", random_search.best_params_)
         logging.info(f"Hyperparameter tuning completed. Best params: {random_search.best_params_}")
 
         model = cast(RandomForestClassifier, random_search.best_estimator_)
@@ -235,7 +262,7 @@ class RandomForestModel(BaseModel):
         Returns:
             Path to saved pipeline
         """
-        return self.saving_service.save_model(model, model_dir)
+        return self._saving_service.save_model(model, model_dir)
 
     def load_model(self, model_path: str) -> RandomForestClassifier:
         """
@@ -247,7 +274,7 @@ class RandomForestModel(BaseModel):
         Returns:
             Loaded RandomForestClassifier
         """
-        model = self.saving_service.load_model(model_path)
+        model = self._saving_service.load_model(model_path)
         self.model = model
         self.is_trained = True
         return model
@@ -278,7 +305,7 @@ class RandomForestModel(BaseModel):
         # Increase max_samples to give plotter more options for diverse examples
         self._enrich_df_with_predictions(df_viz, max_samples=20)
 
-        return self.evaluation_service.evaluate_model_comprehensive(
+        return self._evaluation_service.evaluate_model_comprehensive(
             model, X_val, y_val, X_test, y_test, df_viz,
             model_name=model_name, persist_results=persist_results
         )
