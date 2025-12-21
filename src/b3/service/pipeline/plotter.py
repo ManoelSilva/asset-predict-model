@@ -20,7 +20,7 @@ class B3DashboardPlotter:
             self,
             df: pd.DataFrame,
             ticker_col: str = 'ticker',
-            price_col: str = 'price_momentum_5',
+            price_col: str = 'close',
             target_col: str = 'target',
             max_samples: int = 5,
             save_path: str = None
