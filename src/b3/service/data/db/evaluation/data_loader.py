@@ -115,6 +115,44 @@ class EvaluationDataLoader:
             logging.error(f"Error saving evaluation {evaluation_id}: {str(e)}")
             return False
 
+    def update_metrics_json(self, evaluation_id: str, additional_metrics: Dict[str, Any]) -> bool:
+        """
+        Update the metrics_json column for a specific evaluation with additional metrics.
+
+        Args:
+            evaluation_id (str): Unique identifier for this evaluation
+            additional_metrics (dict): Metrics to add/update in the JSON
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Fetch existing metrics_json
+            query = f"SELECT metrics_json FROM {self.table_name} WHERE evaluation_id = ?"
+            result = self.conn.execute(query, (evaluation_id,)).fetchone()
+
+            if not result:
+                logging.warning(f"Evaluation {evaluation_id} not found for update")
+                return False
+
+            metrics_json_str = result[0]
+            metrics = json.loads(metrics_json_str) if metrics_json_str else {}
+
+            # Update metrics
+            metrics.update(additional_metrics)
+            new_metrics_json = json.dumps(metrics, default=str)
+
+            # Update database
+            update_sql = f"UPDATE {self.table_name} SET metrics_json = ? WHERE evaluation_id = ?"
+            self.conn.execute(update_sql, (new_metrics_json, evaluation_id))
+
+            logging.info(f"Successfully updated metrics for evaluation {evaluation_id}")
+            return True
+
+        except Exception as e:
+            logging.error(f"Error updating metrics for evaluation {evaluation_id}: {str(e)}")
+            return False
+
     def _extract_metrics(self, evaluation_results: Dict[str, Any]) -> Dict[str, float]:
         """
         Extract key metrics from sklearn classification report.

@@ -209,6 +209,19 @@ class B3ModelEvaluationService:
         logging.info(f"Regression metrics -> MAE: {mae:.6f}, RMSE: {rmse:.6f}, MAPE: {mape:.4f}%")
         return {"mae": float(mae), "rmse": float(rmse), "mape": float(mape)}
 
+    def update_evaluation_metrics(self, evaluation_id: str, additional_metrics: dict) -> bool:
+        """
+        Update evaluation metrics in database.
+        
+        Args:
+            evaluation_id: ID of the evaluation to update
+            additional_metrics: Dictionary of metrics to add
+            
+        Returns:
+            bool: Success status
+        """
+        return self.evaluation_data_loader.update_metrics_json(evaluation_id, additional_metrics)
+
     def get_evaluation_history(self, model_name: str = None) -> DataFrame:
         """
         Retrieve evaluation history from the database.

@@ -38,11 +38,12 @@ class ModelTrainingHandler:
 
             data = req_data or {}
             n_jobs = data.get('n_jobs', DEFAULT_N_JOBS)
+            model_dir = data.get('model_dir', 'models')
             model_type = data.get('model_type', 'rf')
             model_type = normalize_model_type(model_type)
 
             # Start training in background
-            future = self._executor.submit(self._run_training_pipeline, model_type, n_jobs)
+            future = self._executor.submit(self._run_training_pipeline, model_type, n_jobs, model_dir)
             self._pipeline_state['training_future'] = future
             self._pipeline_state['training_status'] = 'running'
 
@@ -71,7 +72,7 @@ class ModelTrainingHandler:
             )
             return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR
 
-    def _run_training_pipeline(self, model_type: str, n_jobs: int):
+    def _run_training_pipeline(self, model_type: str, n_jobs: int, model_dir: str):
         try:
             # Create model instance using factory
             model = ModelFactory.get_model(model_type)
@@ -138,13 +139,19 @@ class ModelTrainingHandler:
                 # Serialize Random Forest models
                 model_b64 = self._serialize_model(trained_model)
                 self._pipeline_state[MODEL_STORAGE_KEY] = model_b64
-            else:
+
+            # Always save model to disk (especially important for LSTM)
+            model_path = model.save_model(trained_model, model_dir)
+            self._pipeline_state['model_path'] = model_path
+
+            if not is_rf_model(model_type):
                 # For LSTM models, store the model type
                 self._pipeline_state['trained_model_type'] = model_type
 
             # Store training results
             self._pipeline_state['training_status'] = 'completed'
             self._pipeline_state['training_results'] = {
+                'model_path': model_path,
                 'model_type': model_type,
                 'best_params': trained_model.get_params() if hasattr(trained_model, 'get_params') else {},
                 'train_size': train_size

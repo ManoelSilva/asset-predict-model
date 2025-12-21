@@ -1,4 +1,5 @@
 import logging
+from typing import Tuple, Dict
 
 import pandas as pd
 from asset_model_data_storage.data_storage_service import DataStorageService
@@ -68,7 +69,7 @@ class ModelManagerService(object):
             **kwargs: Optional parameters to override config values. Accepts same parameters as TrainingConfig.
         
         Returns:
-            str: Path to saved model
+            Tuple[str, Dict]: Path to saved model and evaluation results
         """
         # Create config from kwargs if provided, otherwise use provided config or default
         if config is None:
@@ -81,7 +82,7 @@ class ModelManagerService(object):
 
         # Normalize model type to canonical form
         config.model_type = normalize_model_type(config.model_type)
-        
+
         # Step 1: Load data using data loading service
         df = self.data_loading_service.load_data()
 
@@ -96,12 +97,12 @@ class ModelManagerService(object):
             raise
 
         # Step 4: Train model using unified interface
-        model_path = self._train_model_unified(model, config, X, y, df_processed)
+        model_path, evaluation_results = self._train_model_unified(model, config, X, y, df_processed)
 
-        return model_path
+        return model_path, evaluation_results
 
     @staticmethod
-    def _train_model_unified(model, config: TrainingConfig, X, y, df_processed) -> str:
+    def _train_model_unified(model, config: TrainingConfig, X, y, df_processed) -> Tuple[str, Dict]:
         """
         Unified training method that handles both Random Forest and LSTM models.
         Delegates model-specific logic to the model classes themselves.
@@ -114,7 +115,7 @@ class ModelManagerService(object):
             df_processed: Processed dataframe
             
         Returns:
-            Path to saved model
+            Tuple[str, Dict]: Path to saved model and evaluation results
         """
         if is_rf_model(config.model_type):
             # Random Forest training flow - delegate to model
@@ -159,7 +160,7 @@ class ModelManagerService(object):
         else:
             raise ValueError(f"Unsupported model type: {config.model_type}")
 
-        return model_path
+        return model_path, evaluation_results
 
     def predict_lstm_price(self, X_window: pd.DataFrame, model_dir: str = "models",
                            lookback: int = 32, price_col: str = "close"):
@@ -181,7 +182,7 @@ class ModelManagerService(object):
         try:
             # Create LSTM model instance using factory
             lstm_model = ModelFactory.get_model("lstm")
-            
+
             # Get appropriate saving service for LSTM
             saving_service = ModelFactory.get_persist_service("lstm", self.storage_service)
             model_path = saving_service.get_model_path(model_dir)

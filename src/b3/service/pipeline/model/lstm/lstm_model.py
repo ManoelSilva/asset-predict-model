@@ -545,6 +545,23 @@ class LSTMModel(BaseModel):
             logging.info(f"Validation price regression: {reg_val}")
             logging.info(f"Test price regression: {reg_test}")
 
+            if persist_results:
+                try:
+                    # Update validation record
+                    if 'validation' in classification_results and 'evaluation_id' in classification_results[
+                        'validation']:
+                        val_id = classification_results['validation']['evaluation_id']
+                        self.evaluation_service.update_evaluation_metrics(val_id, {'price_regression': reg_val})
+                        logging.info(f"Updated validation evaluation {val_id} with regression metrics")
+
+                    # Update test record
+                    if 'test' in classification_results and 'evaluation_id' in classification_results['test']:
+                        test_id = classification_results['test']['evaluation_id']
+                        self.evaluation_service.update_evaluation_metrics(test_id, {'price_regression': reg_test})
+                        logging.info(f"Updated test evaluation {test_id} with regression metrics")
+                except Exception as e:
+                    logging.error(f"Error persisting regression metrics: {str(e)}")
+
         return {
             'classification': classification_results,
             'regression': regression_results

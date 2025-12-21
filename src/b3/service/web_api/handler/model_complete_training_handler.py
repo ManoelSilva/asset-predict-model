@@ -85,7 +85,7 @@ class CompleteTrainingHandler:
             self._pipeline_state['y_targets'] = y.to_dict()
             self._pipeline_state['processed_data'] = df_processed.to_dict('records')
 
-            model_path = self._model_manager_service.train(
+            model_path, evaluation_results = self._model_manager_service.train(
                 model_dir=model_dir,
                 n_jobs=n_jobs,
                 test_size=test_size,
@@ -118,6 +118,7 @@ class CompleteTrainingHandler:
             self._pipeline_state['training_results'] = {
                 'model_path': model_path,
                 'model_type': model_type,
+                'evaluation': evaluation_results,
                 'data_info': {
                     'total_samples': len(df),
                     'model_type': model_type

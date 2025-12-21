@@ -2,12 +2,12 @@ joblib==1.5.3
 requests==2.32.5
 scikit-learn==1.8.0
 pandas==2.3.3
-boto3==1.42.12
+boto3==1.42.14
 duckdb==1.4.2
 python-dotenv==1.2.1
 seaborn==0.13.2
 matplotlib==3.10.8
-numpy==2.3.5
+numpy==2.4.0
 Flask==3.1.2
 waitress==3.0.2
 flask-cors==6.0.2
