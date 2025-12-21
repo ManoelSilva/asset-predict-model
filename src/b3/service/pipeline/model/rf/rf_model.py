@@ -11,7 +11,7 @@ from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model.rf.rf_config import RandomForestConfig
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.rf_persist_service import RandomForestPersistService
-from constants import RANDOM_STATE
+from constants import RANDOM_STATE, FEATURE_SET
 
 
 class RandomForestModel(BaseModel):
@@ -138,6 +138,56 @@ class RandomForestModel(BaseModel):
         logging.info("Random Forest training completed successfully")
         return model
 
+    def _enrich_df_with_predictions(self, df: pd.DataFrame, max_samples: int = 5):
+        """
+        Add predictions to the dataframe for visualization.
+        Operates in-place.
+        Optimized to batch predictions.
+        """
+        if df is None or df.empty or 'ticker' not in df.columns:
+            return
+
+        all_tickers = df['ticker'].unique()
+        sample_tickers = all_tickers[:max_samples]
+
+        logging.info(f"Generating RF predictions for visualization tickers: {sample_tickers}")
+
+        # Initialize columns
+        df['predicted_action'] = None
+
+        # Filter for all sample tickers
+        mask = df['ticker'].isin(sample_tickers)
+        if not mask.any():
+            return
+
+        sub_df = df[mask].copy()
+
+        try:
+            # Identify feature columns using strict FEATURE_SET
+            feature_cols = [c for c in FEATURE_SET if c in sub_df.columns]
+
+            if not feature_cols:
+                logging.warning(f"No valid features found for RF enrichment. Expected some of: {FEATURE_SET}")
+                return
+
+            X_sub = sub_df[feature_cols]
+            y_sub = sub_df['target'] if 'target' in sub_df.columns else pd.Series(index=sub_df.index)
+
+            # Prepare data
+            X_prep, _ = self.prepare_data(X_sub, y_sub)
+
+            if X_prep.empty:
+                return
+
+            # Predict
+            preds = self.predict(X_prep)
+
+            # Assign back using index
+            df.loc[X_prep.index, 'predicted_action'] = preds
+
+        except Exception as e:
+            logging.warning(f"Failed to generate visualization predictions: {e}")
+
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """
         Make predictions using trained Random Forest pipeline.
@@ -223,8 +273,13 @@ class RandomForestModel(BaseModel):
         model_name = kwargs.get('model_name', 'b3_random_forest')
         persist_results = kwargs.get('persist_results', True)
 
+        # Enrich dataframe with predictions for visualization
+        df_viz = df_processed.copy()
+        # Increase max_samples to give plotter more options for diverse examples
+        self._enrich_df_with_predictions(df_viz, max_samples=20)
+
         return self.evaluation_service.evaluate_model_comprehensive(
-            model, X_val, y_val, X_test, y_test, df_processed,
+            model, X_val, y_val, X_test, y_test, df_viz,
             model_name=model_name, persist_results=persist_results
         )
 

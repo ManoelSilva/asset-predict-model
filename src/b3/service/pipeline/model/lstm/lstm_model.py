@@ -13,7 +13,7 @@ from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
 from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.lstm_persist_service import LSTMPersistService
-from constants import RANDOM_STATE
+from constants import RANDOM_STATE, FEATURE_SET
 
 
 class LSTMModel(BaseModel):
@@ -334,6 +334,126 @@ class LSTMModel(BaseModel):
         logging.info("LSTM training completed successfully")
         return clf
 
+    def _enrich_df_with_predictions(self, df: pd.DataFrame, max_samples: int = 5):
+        """
+        Add predictions to the dataframe for visualization.
+        Operates in-place or returns modified dataframe.
+        Optimized to batch predictions.
+        """
+        if df is None or df.empty:
+            return
+
+        # Pick sample tickers
+        if 'ticker' not in df.columns:
+            return
+
+        all_tickers = df['ticker'].unique()
+        # Prefer tickers that have enough data
+        valid_tickers = []
+        # Check a few tickers first to avoid scanning all if there are many
+        check_limit = min(len(all_tickers), 20)
+
+        for t in all_tickers[:check_limit]:
+            if len(df[df['ticker'] == t]) > self.config.lookback + self.config.horizon + 10:
+                valid_tickers.append(t)
+
+        sample_tickers = valid_tickers[:max_samples]
+        if not sample_tickers:
+            sample_tickers = all_tickers[:max_samples]
+
+        logging.info(f"Generating predictions for visualization tickers: {sample_tickers}")
+
+        # Initialize columns
+        df['predicted_action'] = None
+        df['predicted_price'] = None
+
+        # Filter dataframe for all sample tickers
+        mask = df['ticker'].isin(sample_tickers)
+        if not mask.any():
+            return
+
+        sub_df = df[mask].copy()
+
+        # Sort by ticker and date to ensure alignment with _build_sequences
+        # Note: _build_sequences does its own sorting internally on the passed dataframe,
+        # but we need to replicate that sort to map indices back.
+        sort_cols = ['ticker']
+        date_col = next((c for c in ["date", "datetime", "timestamp"] if c in sub_df.columns), None)
+        if date_col:
+            sort_cols.append(date_col)
+
+        sub_df = sub_df.sort_values(sort_cols)
+
+        try:
+            # Prepare features and targets for the whole batch
+            # Use strict feature set to avoid shape mismatches or boolean column issues
+            feature_cols = [c for c in FEATURE_SET if c in sub_df.columns]
+
+            if not feature_cols:
+                logging.warning(f"No valid features found for enrichment. Expected some of: {FEATURE_SET}")
+                return
+
+            X_sub = sub_df[feature_cols]
+            y_sub = sub_df['target'] if 'target' in sub_df.columns else pd.Series(index=sub_df.index)
+
+            # Build sequences for all tickers at once
+            X_seq, _, _, _, _ = self._build_sequences(
+                X_sub, y_sub, sub_df,
+                price_col=self.config.price_col,
+                lookback=self.config.lookback,
+                horizon=self.config.horizon
+            )
+
+            if len(X_seq) == 0:
+                return
+
+            logging.info(f"Predicting on {len(X_seq)} sequences for visualization...")
+
+            # Batch prediction
+            pred_actions = self.predict(X_seq)
+            pred_returns = self.predict_return(X_seq)
+
+            # Now we need to map predictions back to the dataframe indices.
+            # We iterate through the groups in the same order as _build_sequences did.
+
+            current_idx = 0
+
+            # Group sizes in the sorted dataframe
+            groups = sub_df.groupby("ticker", sort=False)
+
+            for ticker, group in groups:
+                size = len(group)
+                n_w = size - self.config.horizon - self.config.lookback
+
+                if n_w > 0:
+                    # The sequences correspond to the valid windows for this group
+                    # Based on _build_sequences logic, y_action_seq[k] ~ yg[lookback + k]
+                    # So predictions align with rows starting at `lookback` index within the group
+
+                    # Indices in the original dataframe (group is a slice of sub_df)
+                    target_indices = group.index[self.config.lookback: self.config.lookback + n_w]
+
+                    # Extract predictions for this group
+                    group_actions = pred_actions[current_idx: current_idx + n_w]
+                    group_returns = pred_returns[current_idx: current_idx + n_w]
+
+                    # Calculate prices
+                    # p0 is at `lookback - 1 + k`
+                    # We need the prices at (lookback - 1) relative to group start
+                    p0_indices = group.index[self.config.lookback - 1: self.config.lookback - 1 + n_w]
+                    p0_values = group.loc[p0_indices, self.config.price_col].values.astype(float)
+
+                    group_prices = p0_values * (1.0 + group_returns.flatten())
+
+                    # Assign to original dataframe (df)
+                    df.loc[target_indices, 'predicted_action'] = group_actions
+                    df.loc[target_indices, 'predicted_price'] = group_prices
+
+                    current_idx += n_w
+
+        except Exception as e:
+            logging.warning(f"Failed to generate visualization predictions: {e}")
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Make action predictions using trained LSTM model.
@@ -516,9 +636,16 @@ class LSTMModel(BaseModel):
         model_name = kwargs.get('model_name', 'b3_lstm_mtl')
         persist_results = kwargs.get('persist_results', True)
 
+        # Enrich dataframe with predictions for visualization
+        # We work on a copy to avoid side effects
+        df_viz = df_processed.copy()
+        # Generate predictions for a larger pool of tickers (e.g. 20) to ensure the plotter
+        # can find diverse examples (Buy/Sell/Hold).
+        self._enrich_df_with_predictions(df_viz, max_samples=20)
+
         # Evaluate classification
         classification_results = self.evaluation_service.evaluate_model_comprehensive(
-            model, X_val, yA_val, X_test, yA_test, df_processed,
+            model, X_val, yA_val, X_test, yA_test, df_viz,
             model_name=model_name, persist_results=persist_results
         )
 

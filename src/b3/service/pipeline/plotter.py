@@ -22,49 +22,141 @@ class B3DashboardPlotter:
             ticker_col: str = 'ticker',
             price_col: str = 'close',
             target_col: str = 'target',
+            predicted_col: str = 'predicted_action',
+            predicted_price_col: str = 'predicted_price',
             max_samples: int = 5,
             save_path: str = None
     ):
         """
-        Plot price history and BUY/SELL/HOLD actions for a sample of tickers using the provided target column.
+        Plot price history and BUY/SELL/HOLD actions for a sample of tickers.
+        Can plot both ground truth targets and model predictions.
 
-        For each ticker (up to max_samples), this function plots the price series and overlays action markers
-        based on the values in the target column:
-        - 'buy_target': green upward triangle (BUY)
-        - 'sell_target': red downward triangle (SELL)
-        - 'hold': gray circle (HOLD)
+        For each ticker (up to max_samples), this function plots the price series and overlays action markers.
+        If predicted_col is present, it uses predictions for markers. Otherwise uses target_col.
+        If predicted_price_col is present, it adds a line for predicted prices.
 
         Args:
-            df (pd.DataFrame): DataFrame containing at least the columns for ticker, price, date, and target.
-            ticker_col (str): Name of the ticker column in df (default: 'ticker').
-            price_col (str): Name of the price column in df (default: 'price_momentum_5').
-            target_col (str): Name of the action/target column in df (should contain 'buy_target', 'sell_target', 'hold').
+            df (pd.DataFrame): DataFrame containing columns for ticker, price, date, and targets/predictions.
+            ticker_col (str): Name of the ticker column (default: 'ticker').
+            price_col (str): Name of the price column (default: 'close').
+            target_col (str): Name of the ground truth target column (default: 'target').
+            predicted_col (str): Name of the predicted action column (default: 'predicted_action').
+            predicted_price_col (str): Name of the predicted price column (default: 'predicted_price').
             max_samples (int): Maximum number of tickers to plot (default: 5).
-            save_path (str): If provided, saves the plot to this path instead of displaying it.
+            save_path (str): If provided, saves the plot to this path.
         """
-        logging.info(f"Plotting action samples by ticker.. df: \n{df.head()}")
+        logging.info(f"Plotting samples by ticker.. df shape: {df.shape}")
 
-        sample_tickers = df[ticker_col].dropna().unique()[:max_samples]
+        # Smart ticker selection to show diverse examples (Buy/Sell/Hold)
+        all_tickers = df[ticker_col].dropna().unique()
+        selected_tickers = []
+
+        # 1. Identify tickers with predictions
+        tickers_with_preds = []
+        if predicted_col in df.columns:
+            # Check which tickers have actual predictions (not all None/NaN)
+            # GroupBy is expensive on large DF, let's filter first if possible or iterate
+            # Optimization: check uniqueness in a simpler way if possible, or just iterate valid ones
+
+            # Fast check: get unique tickers that have non-null predictions
+            pred_mask = df[predicted_col].notna()
+            if pred_mask.any():
+                tickers_with_preds = df.loc[pred_mask, ticker_col].unique().tolist()
+
+        candidates = tickers_with_preds if tickers_with_preds else all_tickers.tolist()
+
+        # 2. Try to find one example for each action type if predictions exist
+        if tickers_with_preds:
+            # Helper to find ticker with specific action
+            def find_ticker_with_action(action_type, exclude_list):
+                # We look at the dataframe where predicted_col == action_type
+                mask = (df[predicted_col].astype(str).str.lower().str.contains(action_type)) & \
+                       (df[ticker_col].isin(candidates)) & \
+                       (~df[ticker_col].isin(exclude_list))
+
+                found = df.loc[mask, ticker_col].unique()
+                if len(found) > 0:
+                    return found[0]
+                return None
+
+            # Try to get one of each
+            for action in ['buy', 'sell', 'hold']:
+                t = find_ticker_with_action(action, selected_tickers)
+                if t:
+                    selected_tickers.append(t)
+
+        # 3. Fill the rest with remaining candidates
+        remaining = [t for t in candidates if t not in selected_tickers]
+
+        # If we still have space and didn't fill from preds (or didn't have preds), 
+        # add from all_tickers if needed (though candidates handles this)
+        if len(selected_tickers) < max_samples:
+            fill_count = max_samples - len(selected_tickers)
+            selected_tickers.extend(remaining[:fill_count])
+
+        # 4. If we still don't have enough (unlikely unless dataset is small), add from all_tickers
+        if len(selected_tickers) < max_samples:
+            remaining_all = [t for t in all_tickers if t not in selected_tickers]
+            fill_count = max_samples - len(selected_tickers)
+            selected_tickers.extend(remaining_all[:fill_count])
+
+        sample_tickers = selected_tickers[:max_samples]
+
         n = len(sample_tickers)
-        _, axes = plt.subplots(n, 1, figsize=(10, 4 * n), sharex=False)
+        if n == 0:
+            logging.warning("No tickers found in dataframe for plotting.")
+            return
+
+        _, axes = plt.subplots(n, 1, figsize=(12, 5 * n), sharex=False)
         if n == 1:
             axes = [axes]
+
         for i, ticker in enumerate(sample_tickers):
             sub_df = df[df[ticker_col] == ticker].sort_values('date')
+
+            # Extract data
+            dates = pd.to_datetime(sub_df['date'])
             prices = sub_df[price_col]
-            actions = sub_df[target_col].astype(str).str.lower()
-            axes[i].plot(sub_df['date'], prices, label='Price', color='blue')
-            # Plot BUY, SELL, HOLD markers
-            buy_idx = actions[actions == 'buy_target'].index
-            sell_idx = actions[actions == 'sell_target'].index
-            hold_idx = actions[actions == 'hold'].index
-            axes[i].scatter(sub_df.loc[buy_idx, 'date'], prices.loc[buy_idx], color='green', label='BUY', marker='^')
-            axes[i].scatter(sub_df.loc[sell_idx, 'date'], prices.loc[sell_idx], color='red', label='SELL', marker='v')
-            axes[i].scatter(sub_df.loc[hold_idx, 'date'], prices.loc[hold_idx], color='gray', label='HOLD', marker='o',
-                            alpha=0.5)
-            axes[i].set_title(f"{ticker} Price & Action Samples")
+
+            # Plot Actual Price
+            axes[i].plot(dates, prices, label='Actual Price', color='blue', linewidth=1.5)
+
+            # Plot Predicted Price if available
+            if predicted_price_col in sub_df.columns and sub_df[predicted_price_col].notna().any():
+                pred_prices = sub_df[predicted_price_col]
+                axes[i].plot(dates, pred_prices, label='Predicted Price', color='orange', linestyle='--', linewidth=1.5,
+                             alpha=0.8)
+
+            # Determine which actions to plot (Predictions preferred if available)
+            action_source = predicted_col if predicted_col in sub_df.columns else target_col
+            actions = sub_df[action_source].astype(str).str.lower().fillna('none')
+
+            # Clean action names (remove _target suffix if present)
+            actions = actions.str.replace('_target', '', regex=False)
+
+            # Define markers
+            buy_mask = actions == 'buy'
+            sell_mask = actions == 'sell'
+            hold_mask = actions == 'hold'
+
+            # Plot markers
+            if buy_mask.any():
+                axes[i].scatter(dates[buy_mask], prices[buy_mask], color='green', label='Buy Signal', marker='^', s=100,
+                                zorder=5)
+            if sell_mask.any():
+                axes[i].scatter(dates[sell_mask], prices[sell_mask], color='red', label='Sell Signal', marker='v',
+                                s=100, zorder=5)
+            if hold_mask.any():
+                # Plot holds smaller and less opaque
+                axes[i].scatter(dates[hold_mask], prices[hold_mask], color='gray', label='Hold Signal', marker='o',
+                                s=30, alpha=0.3)
+
+            title_suffix = "(Predictions)" if action_source == predicted_col else "(Ground Truth)"
+            axes[i].set_title(f"{ticker} - {title_suffix}")
             axes[i].set_ylabel('Price')
             axes[i].legend()
+            axes[i].grid(True, alpha=0.3)
+
         plt.xlabel('Date')
         plt.tight_layout()
 
@@ -87,6 +179,6 @@ class B3DashboardPlotter:
                 logging.error(f"Failed to save plot to {save_path}: {e}")
                 raise
             finally:
-                plt.close()  # Close the figure to free memory
+                plt.close()
         else:
             plt.show()
