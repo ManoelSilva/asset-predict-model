@@ -97,7 +97,6 @@ Uma API REST baseada em Flask expõe todas as etapas de treinamento e predição
 - `POST /api/b3/save-model`: Salva o modelo treinado
 - `POST /api/b3/complete-training`: Executa todo o pipeline de treinamento
 - `POST /api/b3/predict`: Faz predições para um ticker específico (suporta rf e lstm)
-- `POST /api/b3/predict-price`: Preve o preço do próximo passo (apenas LSTM)
 - `GET /api/b3/status`: Consulta o status atual do pipeline
 - `GET /api/b3/training-status`: Consulta o status do treinamento
 - `POST /api/b3/clear-state`: Limpa o estado do pipeline

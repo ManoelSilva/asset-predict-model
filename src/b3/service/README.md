@@ -105,7 +105,7 @@ from b3.service.pipeline import B3Model
 model = B3Model()
 
 # Train using the new modular approach
-model.train(model_dir="models", n_jobs=5, test_size=0.2, val_size=0.2)
+model.run(model_dir="models", n_jobs=5, test_size=0.2, val_size=0.2)
 
 # Make predictions
 predictions = model.predict(new_data, model_dir="models")

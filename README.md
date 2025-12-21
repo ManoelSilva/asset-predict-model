@@ -97,7 +97,6 @@ A Flask-based REST API exposes all training and prediction stages as endpoints. 
 - `POST /api/b3/save-model`: Save the trained model
 - `POST /api/b3/complete-training`: Run the complete training pipeline
 - `POST /api/b3/predict`: Make predictions for a specific ticker (supports rf and lstm)
-- `POST /api/b3/predict-price`: Predict next-step price (LSTM only)
 - `GET /api/b3/status`: Get current pipeline status
 - `GET /api/b3/training-status`: Get current training status
 - `POST /api/b3/clear-state`: Clear the pipeline state
