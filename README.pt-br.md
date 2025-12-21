@@ -80,6 +80,10 @@ O projeto é construído em torno de uma arquitetura modular de serviços para p
 - **B3ModelEvaluationService**: Avaliação e visualização do modelo.
 - **B3ModelSavingService**: Persistência do modelo (salvar/carregar modelos).
 
+## Modelos Suportados
+- **Random Forest (rf)**: Modelo tradicional de machine learning para classificação. Ideal para predições de ponto único.
+- **LSTM Multi-Task Learning (lstm)**: Modelo de deep learning para predição de ação e previsão de retorno. Requer sequências históricas.
+
 ## API REST (Flask)
 
 Uma API REST baseada em Flask expõe todas as etapas de treinamento e predição como endpoints. A API é documentada com OpenAPI/Swagger (acesse `/swagger` com o servidor rodando).
@@ -88,11 +92,12 @@ Uma API REST baseada em Flask expõe todas as etapas de treinamento e predição
 - `POST /api/b3/load-data`: Carrega dados de mercado da B3
 - `POST /api/b3/preprocess-data`: Pré-processa os dados carregados
 - `POST /api/b3/split-data`: Divide os dados em treino/validação/teste
-- `POST /api/b3/train-model`: Treina o modelo (com ajuste de hiperparâmetros)
+- `POST /api/b3/train-model`: Treina o modelo (rf ou lstm)
 - `POST /api/b3/evaluate-model`: Avalia o modelo treinado
 - `POST /api/b3/save-model`: Salva o modelo treinado
 - `POST /api/b3/complete-training`: Executa todo o pipeline de treinamento
-- `POST /api/b3/predict`: Faz predições para um ticker específico
+- `POST /api/b3/predict`: Faz predições para um ticker específico (suporta rf e lstm)
+- `POST /api/b3/predict-price`: Preve o preço do próximo passo (apenas LSTM)
 - `GET /api/b3/status`: Consulta o status atual do pipeline
 - `GET /api/b3/training-status`: Consulta o status do treinamento
 - `POST /api/b3/clear-state`: Limpa o estado do pipeline
@@ -109,7 +114,7 @@ Uma API REST baseada em Flask expõe todas as etapas de treinamento e predição
 from b3.service.pipeline import B3Model
 
 model = B3Model()
-model.train(model_dir="models", n_jobs=5, test_size=0.2, val_size=0.2)
+model.run(model_dir="models", n_jobs=5, test_size=0.2, val_size=0.2)
 predictions = model.predict(new_data, model_dir="models")
 ```
 
@@ -220,9 +225,11 @@ sudo systemctl restart asset-predict-pipeline
 ## Versionamento e Persistência do Modelo
 
 ### Armazenamento do Modelo
-- **Formato**: Modelos serializados com Joblib
+- **Formato**: 
+  - Random Forest: Modelos serializados com Joblib (`.joblib`)
+  - LSTM: Dicionários de estado PyTorch (`.pt`)
 - **Localização**: Diretório `models/`
-- **Nomenclatura**: `b3_model.joblib`
+- **Nomenclatura**: `b3_model.joblib` ou `b3_lstm_mtl.pt`
 - **Backup**: Versões anteriores arquivadas antes de atualizações
 
 ### Atualizações do Modelo
@@ -235,8 +242,8 @@ sudo systemctl restart asset-predict-pipeline
 ### Integração com Frontend
 A API do modelo integra com o frontend Angular:
 - **Endpoint**: `POST /api/b3/predict`
-- **Input**: `{"ticker": "PETR4"}`
-- **Output**: Resultado da predição com confiança
+- **Input**: `{"ticker": "PETR4", "model_type": "rf"}`
+- **Output**: Resultado da predição com probabilidades e importância das features
 
 ### Integração com Data Lake
 - **Fonte de Dados**: Conecta ao asset-data-lake para dados históricos

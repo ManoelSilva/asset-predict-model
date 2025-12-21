@@ -80,6 +80,10 @@ The project is built around a modular service architecture for asset prediction,
 - **B3ModelEvaluationService**: Handles model evaluation and visualization.
 - **B3ModelSavingService**: Handles model persistence (saving/loading models).
 
+## Supported Models
+- **Random Forest (rf)**: Traditional machine learning model for classification. Best for single-point predictions.
+- **LSTM Multi-Task Learning (lstm)**: Deep learning model for both action prediction and return forecasting. Requires historical sequences.
+
 ## REST API (Flask)
 
 A Flask-based REST API exposes all training and prediction stages as endpoints. The API is documented with OpenAPI/Swagger (see `/swagger` when running the server).
@@ -88,11 +92,12 @@ A Flask-based REST API exposes all training and prediction stages as endpoints. 
 - `POST /api/b3/load-data`: Load B3 market data
 - `POST /api/b3/preprocess-data`: Preprocess loaded data
 - `POST /api/b3/split-data`: Split data into train/validation/test sets
-- `POST /api/b3/train-model`: Train the model (with hyperparameter tuning)
+- `POST /api/b3/train-model`: Train the model (rf or lstm)
 - `POST /api/b3/evaluate-model`: Evaluate the trained model
 - `POST /api/b3/save-model`: Save the trained model
 - `POST /api/b3/complete-training`: Run the complete training pipeline
-- `POST /api/b3/predict`: Make predictions for a specific ticker
+- `POST /api/b3/predict`: Make predictions for a specific ticker (supports rf and lstm)
+- `POST /api/b3/predict-price`: Predict next-step price (LSTM only)
 - `GET /api/b3/status`: Get current pipeline status
 - `GET /api/b3/training-status`: Get current training status
 - `POST /api/b3/clear-state`: Clear the pipeline state
@@ -220,9 +225,11 @@ sudo systemctl restart asset-predict-pipeline
 ## Model Versioning and Persistence
 
 ### Model Storage
-- **Format**: Joblib serialized models
+- **Format**: 
+  - Random Forest: Joblib serialized models (`.joblib`)
+  - LSTM: PyTorch state dictionaries (`.pt`)
 - **Location**: `models/` directory
-- **Naming**: `b3_model.joblib`
+- **Naming**: `b3_model.joblib` or `b3_lstm_mtl.pt`
 - **Backup**: Previous versions archived before updates
 
 ### Model Updates
@@ -235,8 +242,8 @@ sudo systemctl restart asset-predict-pipeline
 ### Frontend Integration
 The model API integrates with the Angular frontend:
 - **Endpoint**: `POST /api/b3/predict`
-- **Input**: `{"ticker": "PETR4"}`
-- **Output**: Prediction result with confidence
+- **Input**: `{"ticker": "PETR4", "model_type": "rf"}`
+- **Output**: Prediction result with probabilities and feature importance
 
 ### Data Lake Integration
 - **Data Source**: Connects to asset-data-lake for historical data
