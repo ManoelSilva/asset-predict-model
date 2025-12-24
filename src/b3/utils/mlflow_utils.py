@@ -12,18 +12,15 @@ class MlFlowUtils:
         Generate a deterministic experiment name based on the configuration.
 
         Pattern:
-        Base: asset-prediction/{model_type}/{asset}/{horizon}
-        RF:   .../features-{feature_set_version}
-        LSTM: .../lb{lookback_window}
+        RF:   RF_{asset}_h{horizon}_v{feature_set_version}
+        LSTM: LSTM_{asset}_h{horizon}_lb{lookback}_u{units}_ep{epochs}
         """
-        base_name = f"asset-prediction/{config.model_type}/{config.asset}/h{config.horizon}"
-
         if is_rf_model(config.model_type):
-            return f"{base_name}/features-{config.feature_set_version}"
+            return f"RF_{config.asset}_h{config.horizon}_v{config.feature_set_version}"
         elif is_lstm_model(config.model_type):
-            return f"{base_name}/lb{config.lookback}"
+            return f"LSTM_{config.asset}_h{config.horizon}_lb{config.lookback}_u{config.units}_ep{config.epochs}"
 
-        return base_name
+        return f"Unknown_{config.model_type}_{config.asset}"
 
     @staticmethod
     def start_run(config: TrainingConfig):
@@ -101,20 +98,33 @@ class MlFlowUtils:
             class_res = evaluation_results  # RF style
 
         if isinstance(class_res, dict):
+            # Helper to log report metrics
+            def log_report_metrics(report: dict, prefix: str):
+                if 'accuracy' in report:
+                    mlflow.log_metric(f"{prefix}_accuracy", report['accuracy'])
+
+                # Global averages
+                for avg_name in ['macro avg', 'weighted avg']:
+                    if avg_name in report:
+                        avg_dict = report[avg_name]
+                        slug = avg_name.replace(' ', '_')
+                        mlflow.log_metric(f"{prefix}_{slug}_f1", avg_dict.get('f1-score', 0))
+                        mlflow.log_metric(f"{prefix}_{slug}_precision", avg_dict.get('precision', 0))
+                        mlflow.log_metric(f"{prefix}_{slug}_recall", avg_dict.get('recall', 0))
+
+                # Per-class metrics
+                for label in ['buy', 'sell', 'hold']:
+                    if label in report:
+                        label_dict = report[label]
+                        mlflow.log_metric(f"{prefix}_class_{label}_f1", label_dict.get('f1-score', 0))
+                        mlflow.log_metric(f"{prefix}_class_{label}_precision", label_dict.get('precision', 0))
+                        mlflow.log_metric(f"{prefix}_class_{label}_recall", label_dict.get('recall', 0))
+
             if 'validation' in class_res and isinstance(class_res['validation'], dict):
-                # Log macro avg or weighted avg
-                val_res = class_res['validation']
-                if 'accuracy' in val_res:
-                    mlflow.log_metric("val_accuracy", val_res['accuracy'])
-                if 'macro avg' in val_res and isinstance(val_res['macro avg'], dict):
-                    mlflow.log_metric("val_f1_macro", val_res['macro avg'].get('f1-score', 0))
+                log_report_metrics(class_res['validation'], "val")
 
             if 'test' in class_res and isinstance(class_res['test'], dict):
-                test_res = class_res['test']
-                if 'accuracy' in test_res:
-                    mlflow.log_metric("test_accuracy", test_res['accuracy'])
-                if 'macro avg' in test_res and isinstance(test_res['macro avg'], dict):
-                    mlflow.log_metric("test_f1_macro", test_res['macro avg'].get('f1-score', 0))
+                log_report_metrics(class_res['test'], "test")
 
     @staticmethod
     def end_run():

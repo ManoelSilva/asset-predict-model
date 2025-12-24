@@ -7,7 +7,7 @@ import numpy as np
 from asset_model_data_storage.data_storage_service import DataStorageService
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator
-from sklearn.metrics import classification_report, mean_absolute_error, mean_squared_error
+from sklearn.metrics import classification_report, mean_absolute_error, mean_squared_error, r2_score
 
 from b3.service.data.db.evaluation.data_loader import EvaluationDataLoader
 from b3.service.pipeline.plotter import B3DashboardPlotter
@@ -206,8 +206,11 @@ class B3ModelEvaluationService:
         # Avoid divide-by-zero in MAPE
         eps = 1e-8
         mape = np.mean(np.abs((y_true - y_pred) / (np.maximum(np.abs(y_true), eps)))) * 100.0
-        logging.info(f"Regression metrics -> MAE: {mae:.6f}, RMSE: {rmse:.6f}, MAPE: {mape:.4f}%")
-        return {"mae": float(mae), "rmse": float(rmse), "mape": float(mape)}
+
+        r2 = r2_score(y_true, y_pred)
+
+        logging.info(f"Regression metrics -> MAE: {mae:.6f}, RMSE: {rmse:.6f}, MAPE: {mape:.4f}%, R2: {r2:.4f}")
+        return {"mae": float(mae), "rmse": float(rmse), "mape": float(mape), "r2": float(r2)}
 
     def update_evaluation_metrics(self, evaluation_id: str, additional_metrics: dict) -> bool:
         """
