@@ -57,7 +57,7 @@ paths:
 
   /api/b3/train-model:
     post:
-      summary: Train the pipeline
+      summary: Train the model
       requestBody:
         required: true
         content:
@@ -133,14 +133,14 @@ paths:
 
   /api/b3/evaluate-model:
     post:
-      summary: Evaluate the trained pipeline
+      summary: Evaluate the trained model
       responses:
         '200':
           description: Model evaluated successfully
 
   /api/b3/save-model:
     post:
-      summary: Save the trained pipeline
+      summary: Save the trained model
       requestBody:
         required: true
         content:
@@ -159,9 +159,9 @@ paths:
         '200':
           description: Model saved successfully
 
-  /api/b3/complete-training:
+  /api/b3/complete-pipeline:
     post:
-      summary: Run the complete training pipeline
+      summary: Run the complete pipeline
       requestBody:
         required: true
         content:
@@ -247,7 +247,7 @@ paths:
                     type: string
                     example: lstm
 
-  /api/b3/status:
+  /api/b3/pipeline-status:
     get:
       summary: Get current pipeline status
       responses:
@@ -286,52 +286,6 @@ paths:
                           type: integer
                         description: Shape of loaded data
                         example: [ 1000, 20 ]
-
-  /api/b3/training-status:
-    get:
-      summary: Get current training status
-      responses:
-        '200':
-          description: Training status returned
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  training_status:
-                    type: string
-                    enum: [ idle, running, completed, failed ]
-                    description: Current training status
-                    example: completed
-                  model_type:
-                    type: string
-                    description: Type of model being trained
-                    example: lstm
-                  training_results:
-                    type: object
-                    description: Results from completed training
-                    properties:
-                      model_path:
-                        type: string
-                        description: Path to saved model
-                      model_type:
-                        type: string
-                        description: Type of trained model
-                      data_info:
-                        type: object
-                        properties:
-                          total_samples:
-                            type: integer
-                            description: Total number of training samples
-                          model_type:
-                            type: string
-                            description: Model type used for training
-                  training_error:
-                    type: string
-                    description: Error message if training failed
 
   /api/b3/clear-state:
     post:
@@ -430,7 +384,7 @@ paths:
                     example: error
                   message:
                     type: string
-                    example: "No trained lstm pipeline found in storage. Please train pipeline first."
+                    example: "No trained lstm model found in storage. Please train model first."
         '500':
           description: Internal server error
           content:

@@ -46,56 +46,6 @@ class PipelineStatusHandler:
             )
             return jsonify(resp), 500
 
-    def get_training_status_handler(self):
-        req_data = request.get_json() if request.is_json else None
-        try:
-            if 'training_status' not in self._pipeline_state:
-                resp = {
-                    'status': 'success',
-                    'message': 'No training in progress',
-                    'training_status': 'not_started'
-                }
-                self._log_api_activity(
-                    endpoint='get_training_status_handler',
-                    request_data=req_data,
-                    response_data=resp,
-                    status='success'
-                )
-                return jsonify(resp)
-            training_status = self._pipeline_state['training_status']
-            response_data = {
-                'status': 'success',
-                'training_status': training_status
-            }
-            if training_status == 'running':
-                response_data['message'] = 'Training is currently running in background'
-            elif training_status == 'completed':
-                response_data['message'] = 'Training completed successfully'
-                if 'training_results' in self._pipeline_state:
-                    response_data['results'] = self._pipeline_state['training_results']
-            elif training_status == 'failed':
-                response_data['message'] = 'Training failed'
-                if 'training_error' in self._pipeline_state:
-                    response_data['error'] = self._pipeline_state['training_error']
-            self._log_api_activity(
-                endpoint='get_training_status_handler',
-                request_data=req_data,
-                response_data=response_data,
-                status='success'
-            )
-            return jsonify(response_data)
-        except Exception as e:
-            logging.error(f"Error getting training status: {str(e)}")
-            resp = {'status': 'error', 'message': str(e)}
-            self._log_api_activity(
-                endpoint='get_training_status_handler',
-                request_data=req_data,
-                response_data=resp,
-                status='error',
-                error_message=str(e)
-            )
-            return jsonify(resp), 500
-
     def clear_state_handler(self):
         req_data = request.get_json() if request.is_json else None
         try:

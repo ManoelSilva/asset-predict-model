@@ -8,7 +8,7 @@ from b3.service.data.db.training.data_loader import TrainingRequestDataLoader
 from b3.service.web_api.handler.data_loading_handler import DataLoadingHandler
 from b3.service.web_api.handler.data_preprocessing_handler import DataPreprocessingHandler
 from b3.service.web_api.handler.data_splitting_handler import DataSplittingHandler
-from b3.service.web_api.handler.model_complete_training_handler import CompleteTrainingHandler
+from b3.service.web_api.handler.complete_pipeline.complete_pipeline_handler import CompletePipelineHandler
 from b3.service.web_api.handler.model_evaluation_handler import ModelEvaluationHandler
 from b3.service.web_api.handler.model_predict_handler import ModelPredictHandler
 from b3.service.web_api.handler.model_saving_handler import ModelSavingHandler
@@ -93,7 +93,7 @@ def create_b3_api_handlers(storage_service: DataStorageService = None,
                                                    storage_service),
         'model_saving': ModelSavingHandler(pipeline_state, log_api_activity, deserialize_model, storage_service),
         'pipeline_status': PipelineStatusHandler(pipeline_state, log_api_activity),
-        'complete_training': CompleteTrainingHandler(data_loading_service, preprocessing_service,
+        'complete_pipeline': CompletePipelineHandler(data_loading_service, preprocessing_service,
                                                      pipeline_state, log_api_activity, serialize_model,
                                                      storage_service),
         'predict': ModelPredictHandler(preprocessing_service, log_api_activity, pipeline_state,

@@ -50,8 +50,22 @@ class B3PytorchMTLModel:
         self.input_features = input_features
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = LSTMNet(input_features, self.config.units, self.config.dropout).to(self.device)
+        self.history = {
+            'loss': [],
+            'val_loss': [],
+            'val_acc': [],
+            'val_mae': []
+        }
 
     def fit(self, X, y_action, y_return):
+        # Reset history
+        self.history = {
+            'loss': [],
+            'val_loss': [],
+            'val_acc': [],
+            'val_mae': []
+        }
+
         # Prepare targets
         if hasattr(y_action, 'astype'):
             y_action_clean = y_action.astype(str).str.replace("_target", "", regex=False)
@@ -146,6 +160,12 @@ class B3PytorchMTLModel:
             avg_val_loss = val_loss / len(val_dataset)
             avg_val_acc = val_acc / len(val_dataset)
             avg_val_mae = val_mae / len(val_dataset)
+
+            # Store history
+            self.history['loss'].append(avg_loss)
+            self.history['val_loss'].append(avg_val_loss)
+            self.history['val_acc'].append(avg_val_acc)
+            self.history['val_mae'].append(avg_val_mae)
 
             logging.info(f"Epoch {epoch + 1}/{self.config.epochs} - "
                          f"loss: {avg_loss:.4f} - "

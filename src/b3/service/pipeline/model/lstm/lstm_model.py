@@ -71,6 +71,10 @@ class LSTMModel(BaseModel):
             trained_model, X_val, yA_val, X_test, yA_test, df_processed,
             p0_val=p0_val, pf_val=pf_val, p0_test=p0_test, pf_test=pf_test
         )
+        
+        # Add training history to evaluation results
+        if hasattr(trained_model, 'history'):
+            evaluation_results['training_history'] = trained_model.history
 
         # 5. Save
         model_path = self.save_model(trained_model, config.model_dir)

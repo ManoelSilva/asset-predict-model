@@ -6,13 +6,14 @@ from flask import request, jsonify
 
 from b3.service.pipeline.model.training_config import TrainingConfig
 from b3.service.pipeline.model.factory import ModelFactory
-from b3.service.pipeline.model.manager import CompletePipelineManagerService
+from b3.service.web_api.handler.complete_pipeline.complete_pipeline_manager import CompletePipelineManagerService
 from b3.service.pipeline.model.utils import is_rf_model
+from b3.utils.mlflow_utils import MlFlowUtils
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE, DEFAULT_N_JOBS, \
     MODEL_STORAGE_KEY
 
 
-class CompleteTrainingHandler:
+class CompletePipelineHandler:
     def __init__(self, data_loading_service, preprocessing_service, pipeline_state, log_api_activity, serialize_model,
                  storage_service=None):
         self._data_loading_service = data_loading_service
@@ -24,7 +25,7 @@ class CompleteTrainingHandler:
         self._manager_service = CompletePipelineManagerService(self._storage_service)
         self._executor = ThreadPoolExecutor(max_workers=1)
 
-    def complete_training_handler(self):
+    def complete_pipeline_handler(self):
         req_data = request.get_json() if request.is_json else None
         try:
             data = req_data or {}
@@ -77,10 +78,12 @@ class CompleteTrainingHandler:
     def _run_complete_training_pipeline(self, config: TrainingConfig):
         try:
             # Use injected services
-
             df = self._data_loading_service.load_data()
             self._pipeline_state['raw_data'] = df.to_dict('records')
             self._pipeline_state['data_shape'] = df.shape
+
+            MlFlowUtils.start_run(config)
+
             x, df_processed, y = self._preprocessing_service.preprocess_data(df)
             self._pipeline_state['X_features'] = x.to_dict('records')
             self._pipeline_state['y_targets'] = y.to_dict()
@@ -117,10 +120,12 @@ class CompleteTrainingHandler:
                     'model_type': config.model_type
                 }
             }
+            MlFlowUtils.log_result(model_path, evaluation_results)
             logging.info(f"Complete training pipeline finished successfully for {config.model_type} model")
-            return True
         except Exception as e:
             logging.error(f"Error in complete training pipeline: {str(e)}")
             self._pipeline_state['training_status'] = 'failed'
             self._pipeline_state['training_error'] = str(e)
             return False
+        finally:
+            MlFlowUtils.end_run()

@@ -16,6 +16,8 @@ class TrainingConfig:
     n_jobs: int = 5
     test_size: float = 0.2
     val_size: float = 0.2
+    asset: str = "B3"
+    feature_set_version: str = "v1"
 
     # LSTM-specific parameters
     lookback: int = 32

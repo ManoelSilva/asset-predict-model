@@ -65,16 +65,15 @@ class B3ModelAPI:
         self.app.route('/api/b3/evaluate-model', methods=['POST'])(
             self.handlers['model_evaluation'].evaluate_model_handler)
         self.app.route('/api/b3/save-model', methods=['POST'])(self.handlers['model_saving'].save_model_handler)
-        self.app.route('/api/b3/complete-training', methods=['POST'])(
-            self.handlers['complete_training'].complete_training_handler)
-        self.app.route('/api/b3/status', methods=['GET'])(self.handlers['pipeline_status'].get_status_handler)
-        self.app.route('/api/b3/training-status', methods=['GET'])(
-            self.handlers['pipeline_status'].get_training_status_handler)
+        self.app.route('/api/b3/complete-pipeline', methods=['POST'])(
+            self.handlers['complete_pipeline'].complete_pipeline_handler)
+        self.app.route('/api/b3/pipeline-status', methods=['GET'])(
+            self.handlers['pipeline_status'].get_status_handler)
         self.app.route('/api/b3/clear-state', methods=['POST'])(self.handlers['pipeline_status']
                                                                 .clear_state_handler)
         self.app.route('/api/b3/predict', methods=['POST'])(self.handlers['predict'].predict_data_handler)
 
     def run(self, host=DEFAULT_API_HOST, port=DEFAULT_API_PORT):
         """Run the Flask application with waitress for production."""
-        logging.info(f"Starting B3 Training API on {host}:{port}")
+        logging.info(f"Starting B3 Model API on {host}:{port}")
         serve(self.app, host=host, port=port)
