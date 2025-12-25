@@ -10,7 +10,6 @@ from b3.service.pipeline.model.training_config import TrainingConfig
 from b3.service.pipeline.model.factory import ModelFactory
 from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model, normalize_model_type
 from b3.utils.api_handler_utils import ApiHandlerUtils
-from b3.utils.mlflow_utils import MlFlowUtils
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_N_JOBS, MODEL_STORAGE_KEY
 
 
@@ -87,11 +86,7 @@ class ModelTrainingHandler:
             return jsonify(resp), HTTP_STATUS_INTERNAL_SERVER_ERROR
 
     def _run_training_pipeline(self, config: TrainingConfig):
-        MlFlowUtils.start_run(config)
-
         try:
-            MlFlowUtils.log_config_params(config)
-
             # Create model instance using factory
             model = ModelFactory.get_model(config.model_type)
 
@@ -162,8 +157,6 @@ class ModelTrainingHandler:
             model_path = model.save_model(trained_model, config.model_dir)
             self._pipeline_state['model_path'] = model_path
 
-            MlFlowUtils.log_result(model_path, trained_model.history)
-
             if not is_rf_model(config.model_type):
                 # For LSTM models, store the model type
                 self._pipeline_state['trained_model_type'] = config.model_type
@@ -184,5 +177,3 @@ class ModelTrainingHandler:
             self._pipeline_state['training_status'] = 'failed'
             self._pipeline_state['training_error'] = str(e)
             return False
-        finally:
-            MlFlowUtils.end_run()
