@@ -41,8 +41,8 @@ class LSTMPersistService(BasePersistService):
         logging.info(f"Saving PyTorch model to {model_dir}...")
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
 
-        if self.storage_service.is_local_storage():
-            self.storage_service.create_directory(model_dir)
+        if self._storage_service.is_local_storage():
+            self._storage_service.create_directory(model_dir)
 
         # Create a temp file
         fd, tmp_path = tempfile.mkstemp(suffix=".pt")
@@ -61,7 +61,7 @@ class LSTMPersistService(BasePersistService):
             with open(tmp_path, "rb") as f:
                 model_bytes = BytesIO(f.read())
 
-            saved_path = self.storage_service.save_file(model_path, model_bytes, 'application/octet-stream')
+            saved_path = self._storage_service.save_file(model_path, model_bytes, 'application/octet-stream')
             logging.info(f"PyTorch model saved: {saved_path}")
             return saved_path
         finally:
@@ -79,10 +79,10 @@ class LSTMPersistService(BasePersistService):
             dict: Checkpoint dictionary containing state_dict and config
         """
         logging.info(f"Loading PyTorch model from {model_path}...")
-        if not self.storage_service.file_exists(model_path):
+        if not self._storage_service.file_exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
 
-        data = self.storage_service.load_file(model_path)
+        data = self._storage_service.load_file(model_path)
 
         # Create a temp file
         fd, tmp_path = tempfile.mkstemp(suffix=".pt")

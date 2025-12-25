@@ -25,12 +25,10 @@ class ModelPredictHandler:
     3. Suggest using Random Forest for single-point predictions
     """
 
-    def __init__(self, preprocessing_service, log_api_activity, pipeline_state, deserialize_model,
-                 storage_service=None):
-        self._preprocessing_service = preprocessing_service
-        self._log_api_activity = log_api_activity
+    def __init__(self, pipeline_state, log_api_activity, preprocessing_service, storage_service=None):
         self._pipeline_state = pipeline_state
-        self._deserialize_model = deserialize_model
+        self._log_api_activity = log_api_activity
+        self._preprocessing_service = preprocessing_service
         self._storage_service = storage_service or DataStorageService()
 
     def _load_model(self, model_type='rf'):

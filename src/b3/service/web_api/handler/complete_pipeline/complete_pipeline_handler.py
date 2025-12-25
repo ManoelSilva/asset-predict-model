@@ -8,19 +8,19 @@ from b3.service.pipeline.model.training_config import TrainingConfig
 from b3.service.pipeline.model.factory import ModelFactory
 from b3.service.web_api.handler.complete_pipeline.complete_pipeline_manager import CompletePipelineManagerService
 from b3.service.pipeline.model.utils import is_rf_model
+from b3.utils.api_handler_utils import ApiHandlerUtils
 from b3.utils.mlflow_utils import MlFlowUtils
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE, DEFAULT_N_JOBS, \
     MODEL_STORAGE_KEY
 
 
 class CompletePipelineHandler:
-    def __init__(self, data_loading_service, preprocessing_service, pipeline_state, log_api_activity, serialize_model,
+    def __init__(self, pipeline_state, log_api_activity, data_loading_service, preprocessing_service,
                  storage_service=None):
-        self._data_loading_service = data_loading_service
-        self._preprocessing_service = preprocessing_service
         self._pipeline_state = pipeline_state
         self._log_api_activity = log_api_activity
-        self._serialize_model = serialize_model
+        self._data_loading_service = data_loading_service
+        self._preprocessing_service = preprocessing_service
         self._storage_service = storage_service or DataStorageService()
         self._manager_service = CompletePipelineManagerService(self._storage_service)
         self._executor = ThreadPoolExecutor(max_workers=1)
@@ -105,7 +105,7 @@ class CompletePipelineHandler:
                 try:
                     persist_service = ModelFactory.get_persist_service(config.model_type, self._storage_service)
                     model = persist_service.load_model(persist_service.get_model_path(config.model_dir))
-                    model_b64 = self._serialize_model(model)
+                    model_b64 = ApiHandlerUtils.serialize_model(model)
                     self._pipeline_state[MODEL_STORAGE_KEY] = model_b64
                 except Exception as e:
                     logging.warning(f"Could not serialize model for pipeline state: {str(e)}")

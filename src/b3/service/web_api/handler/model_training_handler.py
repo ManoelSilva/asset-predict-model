@@ -8,19 +8,17 @@ from flask import request, jsonify
 
 from b3.service.pipeline.model.training_config import TrainingConfig
 from b3.service.pipeline.model.factory import ModelFactory
-from b3.service.web_api.handler.complete_pipeline.complete_pipeline_manager import CompletePipelineManagerService
 from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model, normalize_model_type
+from b3.utils.api_handler_utils import ApiHandlerUtils
 from b3.utils.mlflow_utils import MlFlowUtils
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_N_JOBS, MODEL_STORAGE_KEY
 
 
 class ModelTrainingHandler:
-    def __init__(self, pipeline_state, log_api_activity, serialize_model, storage_service=None):
+    def __init__(self, pipeline_state, log_api_activity, storage_service=None):
         self._pipeline_state = pipeline_state
         self._log_api_activity = log_api_activity
-        self._serialize_model = serialize_model
         self._storage_service = storage_service or DataStorageService()
-        self._model_manager_service = CompletePipelineManagerService(self._storage_service)
         self._executor = ThreadPoolExecutor(max_workers=1)
 
     def train_model_handler(self):
@@ -157,7 +155,7 @@ class ModelTrainingHandler:
             # Store trained model in pipeline state
             if is_rf_model(config.model_type):
                 # Serialize Random Forest models
-                model_b64 = self._serialize_model(trained_model)
+                model_b64 = ApiHandlerUtils.serialize_model(trained_model)
                 self._pipeline_state[MODEL_STORAGE_KEY] = model_b64
 
             # Always save model to disk (especially important for LSTM)

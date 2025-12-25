@@ -5,14 +5,14 @@ from flask import request, jsonify
 
 from b3.service.pipeline.model.factory import ModelFactory
 from b3.service.pipeline.model.utils import is_lstm_model
+from b3.utils.api_handler_utils import ApiHandlerUtils
 from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR, MODEL_STORAGE_KEY
 
 
 class ModelSavingHandler:
-    def __init__(self, pipeline_state, log_api_activity, deserialize_model, storage_service=None):
+    def __init__(self, pipeline_state, log_api_activity, storage_service=None):
         self._pipeline_state = pipeline_state
         self._log_api_activity = log_api_activity
-        self._deserialize_model = deserialize_model
         self._storage_service = storage_service or DataStorageService()
 
     def save_model_handler(self):
@@ -51,7 +51,7 @@ class ModelSavingHandler:
                 model_wrapper = model_instance.load_model(current_model_path)
                 model_to_save = model_wrapper.model
             else:
-                model_to_save = self._deserialize_model(self._pipeline_state[MODEL_STORAGE_KEY])
+                model_to_save = ApiHandlerUtils.deserialize_model(self._pipeline_state[MODEL_STORAGE_KEY])
 
             model_path = persist_service.save_model(model_to_save, model_dir, model_name)
             resp = {

@@ -45,8 +45,8 @@ class RandomForestPersistService(BasePersistService):
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
 
         # Create directory if using local storage
-        if self.storage_service.is_local_storage():
-            self.storage_service.create_directory(model_dir)
+        if self._storage_service.is_local_storage():
+            self._storage_service.create_directory(model_dir)
 
         # Save model to bytes
         model_bytes = BytesIO()
@@ -54,7 +54,7 @@ class RandomForestPersistService(BasePersistService):
         model_bytes.seek(0)
 
         # Save using storage service
-        saved_path = self.storage_service.save_file(model_path, model_bytes, 'application/octet-stream')
+        saved_path = self._storage_service.save_file(model_path, model_bytes, 'application/octet-stream')
         logging.info(f"Model saved: {saved_path}")
 
         return saved_path
@@ -71,11 +71,11 @@ class RandomForestPersistService(BasePersistService):
         """
         logging.info(f"Loading model from {model_path}...")
 
-        if not self.storage_service.file_exists(model_path):
+        if not self._storage_service.file_exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
 
         # Load model data from storage
-        model_data = self.storage_service.load_file(model_path)
+        model_data = self._storage_service.load_file(model_path)
 
         # Load model from bytes
         model_bytes = BytesIO(model_data)

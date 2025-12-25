@@ -11,7 +11,7 @@ info:
     **LSTM Features:**
     - Multi-task learning with action classification and return regression
     - Configurable lookback windows for time series analysis
-    - Keras/TensorFlow backend for neural network training
+    - Pytorch backend for neural network training
     - Support for price prediction using return forecasts
   version: 1.0.0
 servers:

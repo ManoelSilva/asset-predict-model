@@ -21,7 +21,7 @@ class BasePersistService(ABC):
         Args:
             storage_service: Data storage service instance (optional, creates default if not provided)
         """
-        self.storage_service = storage_service or DataStorageService()
+        self._storage_service = storage_service or DataStorageService()
 
     @abstractmethod
     def save_model(self, model, model_dir: str = "models", model_name: str = None) -> str:
@@ -64,7 +64,7 @@ class BasePersistService(ABC):
         """
         model_name = model_name or self.DEFAULT_MODEL_NAME
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
-        return self.storage_service.file_exists(model_path)
+        return self._storage_service.file_exists(model_path)
 
     def get_model_path(self, model_dir: str = "models", model_name: str = None) -> str:
         """
@@ -79,7 +79,7 @@ class BasePersistService(ABC):
         """
         model_name = model_name or self.DEFAULT_MODEL_NAME
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
-        return self.storage_service.get_file_url(model_path)
+        return self._storage_service.get_file_url(model_path)
 
     def get_model_relative_path(self, model_dir: str = "models", model_name: str = None) -> str:
         """
