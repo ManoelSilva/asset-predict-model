@@ -81,23 +81,187 @@ The project is built around a modular service architecture for asset prediction,
 - **B3ModelSavingService**: Handles model persistence (saving/loading models).
 
 ## Supported Models
-- **Random Forest (rf)**: Traditional machine learning model for classification. Best for single-point predictions.
-- **LSTM Multi-Task Learning (lstm)**: Deep learning model for both action prediction and return forecasting. Requires historical sequences.
+
+The project supports two machine learning models for asset price prediction:
+
+### 1. Random Forest (rf)
+- **Type**: Classical Machine Learning (Ensemble Method)
+- **Algorithm**: Random Forest Classifier (scikit-learn)
+- **Use Case**: Classification of asset price direction (Buy/Sell/Hold)
+- **Strengths**: 
+  - Fast training and inference
+  - Interpretable feature importance
+  - Works well with tabular data
+  - No sequence requirements
+- **Output**: Action predictions (classification)
+- **Storage Format**: Joblib serialized models (`.joblib`)
+- **Best For**: Single-point predictions, quick iterations, interpretability
+
+### 2. LSTM Multi-Task Learning (lstm/lstm_mtl)
+- **Type**: Deep Learning (Recurrent Neural Network)
+- **Framework**: PyTorch
+- **Architecture**: Long Short-Term Memory (LSTM) with Multi-Task Learning
+- **Use Case**: 
+  - Action prediction (classification)
+  - Return forecasting (regression)
+- **Strengths**:
+  - Captures temporal patterns in time series
+  - Multi-task learning improves generalization
+  - Can predict both actions and price returns
+- **Requirements**: 
+  - Historical sequences (lookback window)
+  - Sequential data ordered by time
+- **Output**: 
+  - Action predictions (classification)
+  - Return predictions (regression)
+  - Price predictions (derived from returns)
+- **Storage Format**: PyTorch state dictionaries (`.pt`)
+- **Best For**: Time series analysis, capturing temporal dependencies, multi-task predictions
+
+## Execution Modes
+
+The project supports two execution modes for model training:
+
+### 1. Complete Training Pipeline (End-to-End)
+
+Execute the entire training pipeline in a single API call. This mode handles all steps automatically:
+- Data loading
+- Data preprocessing
+- Data splitting
+- Model training
+- Model evaluation
+- Model saving
+
+**Endpoint**: `POST /api/b3/complete-pipeline`
+
+**Example Request**:
+```json
+{
+  "model_type": "rf",
+  "model_dir": "models",
+  "n_jobs": 5,
+  "test_size": 0.2,
+  "val_size": 0.2
+}
+```
+
+**For LSTM**:
+```json
+{
+  "model_type": "lstm",
+  "model_dir": "models",
+  "lookback": 32,
+  "horizon": 1,
+  "epochs": 25,
+  "batch_size": 128,
+  "learning_rate": 0.001,
+  "units": 96,
+  "dropout": 0.2,
+  "test_size": 0.2,
+  "val_size": 0.2
+}
+```
+
+**Benefits**:
+- Simple single-call execution
+- Automatic state management
+- Best for production deployments
+- Handles all pipeline steps sequentially
+
+### 2. Independent Endpoints (Step-by-Step)
+
+Execute each pipeline step independently. This provides fine-grained control over each stage:
+
+**Step 1: Load Data**
+- **Endpoint**: `POST /api/b3/load-data`
+- **Purpose**: Load B3 market data from data source
+- **Returns**: Data shape and column information
+
+**Step 2: Preprocess Data**
+- **Endpoint**: `POST /api/b3/preprocess-data`
+- **Purpose**: Feature engineering, validation, and target label generation
+- **Requires**: Data must be loaded first
+- **Returns**: Feature shapes and target distribution
+
+**Step 3: Split Data**
+- **Endpoint**: `POST /api/b3/split-data`
+- **Purpose**: Split data into train/validation/test sets
+- **Requires**: Preprocessed data
+- **Parameters**: `model_type`, `test_size`, `val_size`
+- **Returns**: Split sizes for each set
+
+**Step 4: Train Model**
+- **Endpoint**: `POST /api/b3/train-model`
+- **Purpose**: Train the selected model (rf or lstm)
+- **Requires**: Split data
+- **Parameters**: `model_type`, `n_jobs` (for RF), LSTM-specific params
+- **Returns**: Training status and model information
+
+**Step 5: Evaluate Model**
+- **Endpoint**: `POST /api/b3/evaluate-model`
+- **Purpose**: Evaluate trained model on validation and test sets
+- **Requires**: Trained model
+- **Returns**: Evaluation metrics and visualization paths
+
+**Step 6: Save Model**
+- **Endpoint**: `POST /api/b3/save-model`
+- **Purpose**: Persist trained model to storage
+- **Requires**: Trained model
+- **Parameters**: `model_dir`, `model_name`
+- **Returns**: Model file path
+
+**Benefits**:
+- Fine-grained control over each step
+- Ability to inspect intermediate results
+- Useful for debugging and experimentation
+- Can modify data between steps
+- Supports custom workflows
+
+**Example Workflow**:
+```python
+import requests
+
+base_url = "http://localhost:5000/api/b3"
+
+# Step 1: Load data
+requests.post(f"{base_url}/load-data")
+
+# Step 2: Preprocess
+requests.post(f"{base_url}/preprocess-data")
+
+# Step 3: Split (specify model type)
+requests.post(f"{base_url}/split-data", json={"model_type": "rf", "test_size": 0.2, "val_size": 0.2})
+
+# Step 4: Train
+requests.post(f"{base_url}/train-model", json={"model_type": "rf", "n_jobs": 5})
+
+# Step 5: Evaluate
+requests.post(f"{base_url}/evaluate-model")
+
+# Step 6: Save
+requests.post(f"{base_url}/save-model", json={"model_dir": "models"})
+```
 
 ## REST API (Flask)
 
 A Flask-based REST API exposes all training and prediction stages as endpoints. The API is documented with OpenAPI/Swagger (see `/swagger` when running the server).
 
 ### Main Endpoints
+
+#### Complete Pipeline
+- `POST /api/b3/complete-pipeline`: Run the complete training pipeline (end-to-end)
+
+#### Individual Steps
 - `POST /api/b3/load-data`: Load B3 market data
 - `POST /api/b3/preprocess-data`: Preprocess loaded data
 - `POST /api/b3/split-data`: Split data into train/validation/test sets
 - `POST /api/b3/train-model`: Train the model (rf or lstm)
 - `POST /api/b3/evaluate-model`: Evaluate the trained model
 - `POST /api/b3/save-model`: Save the trained model
-- `POST /api/b3/complete-training`: Run the complete training pipeline
+
+#### Prediction & Status
 - `POST /api/b3/predict`: Make predictions for a specific ticker (supports rf and lstm)
-- `GET /api/b3/status`: Get current pipeline status
+- `GET /api/b3/pipeline-status`: Get current pipeline status
 - `GET /api/b3/training-status`: Get current training status
 - `POST /api/b3/clear-state`: Clear the pipeline state
 
@@ -152,10 +316,24 @@ See the Swagger UI at [http://localhost:5000/swagger](http://localhost:5000/swag
 ## Model Performance and Evaluation
 
 ### Model Metrics
+
+#### Random Forest
 - **Algorithm**: Random Forest Classifier
-- **Target**: Asset price direction prediction (up/down)
+- **Target**: Asset price direction prediction (Buy/Sell/Hold)
 - **Features**: Technical indicators, price movements, volume patterns
 - **Evaluation**: Cross-validation with train/validation/test splits
+- **Hyperparameter Tuning**: RandomizedSearchCV with stratified K-fold
+
+#### LSTM Multi-Task Learning
+- **Architecture**: PyTorch LSTM with multi-task learning
+- **Tasks**: 
+  - Classification: Action prediction (Buy/Sell/Hold)
+  - Regression: Return forecasting
+- **Features**: Sequential technical indicators and price data
+- **Evaluation**: 
+  - Classification metrics (accuracy, precision, recall, F1)
+  - Regression metrics (MAE, MSE, RMSE, R²)
+- **Training**: Adam optimizer with configurable learning rate
 
 ### Training Data Requirements
 - **Source**: B3 historical data from asset-data-lake

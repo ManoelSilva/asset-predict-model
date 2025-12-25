@@ -44,55 +44,221 @@ The training pipeline has been broken down into the following service classes:
   - `model_exists(model_dir, model_name)`: Checks if model exists
   - `get_model_path(model_dir, model_name)`: Gets model file path
 
-## Flask API
+## Execution Modes
 
-The `B3TrainingAPI` class provides a Flask-based REST API that exposes all training stages as individual endpoints.
+The API supports two execution modes for model training:
 
-### API Endpoints
+### 1. Complete Training Pipeline (End-to-End)
 
-#### Individual Stage Endpoints
+Execute the entire training pipeline in a single API call. This is the recommended mode for production deployments.
 
-1. **POST /api/b3/load-data**
-   - Loads B3 market data
-   - Returns: Data shape and column information
+**Endpoint**: `POST /api/b3/complete-pipeline`
 
-2. **POST /api/b3/preprocess-data**
-   - Preprocesses loaded data
-   - Returns: Feature shapes and target distribution
+**Supported Models**: Both `rf` (Random Forest) and `lstm` (LSTM Multi-Task Learning)
 
-3. **POST /api/b3/split-data**
-   - Splits data into train/validation/test sets
-   - Parameters: `test_size`, `val_size`
-   - Returns: Split sizes
+**Request Body for Random Forest**:
+```json
+{
+  "model_type": "rf",
+  "model_dir": "models",
+  "n_jobs": 5,
+  "test_size": 0.2,
+  "val_size": 0.2
+}
+```
 
-4. **POST /api/b3/train-model**
-   - Trains the model with hyperparameter tuning
-   - Parameters: `n_jobs`
-   - Returns: Model type and best parameters
+**Request Body for LSTM**:
+```json
+{
+  "model_type": "lstm",
+  "model_dir": "models",
+  "lookback": 32,
+  "horizon": 1,
+  "epochs": 25,
+  "batch_size": 128,
+  "learning_rate": 0.001,
+  "units": 96,
+  "dropout": 0.2,
+  "test_size": 0.2,
+  "val_size": 0.2,
+  "price_col": "close"
+}
+```
 
-5. **POST /api/b3/evaluate-model**
-   - Evaluates the trained model
-   - Returns: Evaluation results and visualization path
+**Response**: 
+- Returns immediately with status "running"
+- Training executes in background
+- Check status via `GET /api/b3/training-status`
+- Results available in pipeline state when complete
 
-6. **POST /api/b3/save-model**
-   - Saves the trained model
-   - Parameters: `model_dir`, `model_name`
-   - Returns: Model file path
+**Pipeline Steps Executed**:
+1. Load data from data source
+2. Preprocess data (feature engineering, label generation)
+3. Split data (train/validation/test)
+4. Train model (with hyperparameter tuning for RF)
+5. Evaluate model (classification and regression metrics)
+6. Save model to storage
 
-#### Complete Pipeline Endpoint
+### 2. Independent Endpoints (Step-by-Step)
 
-7. **POST /api/b3/train-complete**
-   - Runs the complete training pipeline in one call
-   - Parameters: `model_dir`, `n_jobs`, `test_size`, `val_size`
-   - Returns: Complete results including model path and evaluation
+Execute each pipeline step independently for fine-grained control.
+
+#### Step 1: Load Data
+**Endpoint**: `POST /api/b3/load-data`
+
+- **Purpose**: Load B3 market data from configured data source
+- **Parameters**: None (uses default data source)
+- **Returns**: 
+  ```json
+  {
+    "status": "success",
+    "message": "Data loaded successfully",
+    "data_shape": [rows, columns],
+    "columns": ["col1", "col2", ...]
+  }
+  ```
+- **State**: Stores raw data in pipeline state
+
+#### Step 2: Preprocess Data
+**Endpoint**: `POST /api/b3/preprocess-data`
+
+- **Purpose**: Feature engineering, validation, and target label generation
+- **Requires**: Data must be loaded (Step 1)
+- **Parameters**: None (uses preprocessing service defaults)
+- **Returns**:
+  ```json
+  {
+    "status": "success",
+    "message": "Data preprocessed successfully",
+    "features_shape": [rows, features],
+    "targets_shape": [rows],
+    "feature_columns": ["feature1", ...],
+    "target_distribution": {"buy": count, "sell": count, ...}
+  }
+  ```
+- **State**: Stores preprocessed features and targets
+
+#### Step 3: Split Data
+**Endpoint**: `POST /api/b3/split-data`
+
+- **Purpose**: Split data into train/validation/test sets
+- **Requires**: Preprocessed data (Step 2)
+- **Parameters**:
+  ```json
+  {
+    "model_type": "rf",  // or "lstm"
+    "test_size": 0.2,
+    "val_size": 0.2
+  }
+  ```
+- **Returns**:
+  ```json
+  {
+    "status": "success",
+    "message": "Data split successfully",
+    "train_size": 1000,
+    "validation_size": 250,
+    "test_size": 250
+  }
+  ```
+- **Note**: Model type determines split strategy (RF uses standard split, LSTM handles sequences)
+- **State**: Stores train/val/test splits
+
+#### Step 4: Train Model
+**Endpoint**: `POST /api/b3/train-model`
+
+- **Purpose**: Train the selected model
+- **Requires**: Split data (Step 3)
+- **Parameters for Random Forest**:
+  ```json
+  {
+    "model_type": "rf",
+    "n_jobs": 5
+  }
+  ```
+- **Parameters for LSTM**:
+  ```json
+  {
+    "model_type": "lstm",
+    "lookback": 32,
+    "horizon": 1,
+    "epochs": 25,
+    "batch_size": 128,
+    "learning_rate": 0.001,
+    "units": 96,
+    "dropout": 0.2
+  }
+  ```
+- **Returns**: 
+  ```json
+  {
+    "status": "success",
+    "message": "Model training started in background",
+    "training_status": "running",
+    "model_type": "rf"
+  }
+  ```
+- **Note**: Training executes in background; check status via `GET /api/b3/training-status`
+- **State**: Stores trained model when complete
+
+#### Step 5: Evaluate Model
+**Endpoint**: `POST /api/b3/evaluate-model`
+
+- **Purpose**: Evaluate trained model on validation and test sets
+- **Requires**: Trained model (Step 4)
+- **Parameters**: None (uses model and data from state)
+- **Returns**:
+  ```json
+  {
+    "status": "success",
+    "evaluation": {
+      "validation": {...},
+      "test": {...}
+    },
+    "visualization_path": "path/to/plot.png"
+  }
+  ```
+- **Metrics**: 
+  - Random Forest: Classification metrics (accuracy, precision, recall, F1)
+  - LSTM: Classification + Regression metrics (MAE, MSE, RMSE, R²)
+
+#### Step 6: Save Model
+**Endpoint**: `POST /api/b3/save-model`
+
+- **Purpose**: Persist trained model to storage
+- **Requires**: Trained model (Step 4)
+- **Parameters**:
+  ```json
+  {
+    "model_dir": "models",
+    "model_name": "b3_model"  // optional
+  }
+  ```
+- **Returns**:
+  ```json
+  {
+    "status": "success",
+    "model_path": "models/b3_model.joblib"  // or .pt for LSTM
+  }
+  ```
 
 #### Utility Endpoints
 
-8. **GET /api/b3/status**
-   - Returns current pipeline state
+**GET /api/b3/pipeline-status**
+- Returns current pipeline state and intermediate results
+- Useful for debugging and monitoring
 
-9. **POST /api/b3/clear-state**
-   - Clears the pipeline state
+**GET /api/b3/training-status**
+- Returns training job status (running, completed, failed)
+- Includes error messages if training failed
+
+**POST /api/b3/clear-state**
+- Clears all pipeline state
+- Useful for starting fresh or debugging
+
+## Flask API
+
+The `B3ModelAPI` class provides a Flask-based REST API that exposes all training stages as individual endpoints or as a complete pipeline.
 
 ## Usage Examples
 
@@ -134,20 +300,100 @@ model = training_service.train_model(X_train, y_train)
 
 ### Using the Flask API
 
+#### Complete Pipeline Mode
+
 ```python
 import requests
 
 # Start the API server
-# python src/b3_featured/service/b3_model_api.py
+# python src/web_api.py
 
-# Use individual endpoints
-response = requests.post("http://localhost:5000/api/b3/load-data")
-response = requests.post("http://localhost:5000/api/b3/preprocess-data")
-# ... continue with other steps
+# Complete pipeline for Random Forest
+response = requests.post(
+    "http://localhost:5000/api/b3/complete-pipeline",
+    json={
+        "model_type": "rf",
+        "model_dir": "models",
+        "n_jobs": 5,
+        "test_size": 0.2,
+        "val_size": 0.2
+    }
+)
 
-# Or use the complete pipeline
-response = requests.post("http://localhost:5000/api/b3/train-complete", 
-                        json={"n_jobs": 5, "test_size": 0.2, "val_size": 0.2})
+# Complete pipeline for LSTM
+response = requests.post(
+    "http://localhost:5000/api/b3/complete-pipeline",
+    json={
+        "model_type": "lstm",
+        "model_dir": "models",
+        "lookback": 32,
+        "horizon": 1,
+        "epochs": 25,
+        "batch_size": 128,
+        "learning_rate": 0.001,
+        "units": 96,
+        "dropout": 0.2,
+        "test_size": 0.2,
+        "val_size": 0.2
+    }
+)
+
+# Check training status
+status = requests.get("http://localhost:5000/api/b3/training-status")
+print(status.json())
+```
+
+#### Step-by-Step Mode
+
+```python
+import requests
+import time
+
+base_url = "http://localhost:5000/api/b3"
+
+# Step 1: Load data
+response = requests.post(f"{base_url}/load-data")
+print(response.json())
+
+# Step 2: Preprocess
+response = requests.post(f"{base_url}/preprocess-data")
+print(response.json())
+
+# Step 3: Split data (specify model type)
+response = requests.post(
+    f"{base_url}/split-data",
+    json={"model_type": "rf", "test_size": 0.2, "val_size": 0.2}
+)
+print(response.json())
+
+# Step 4: Train model
+response = requests.post(
+    f"{base_url}/train-model",
+    json={"model_type": "rf", "n_jobs": 5}
+)
+print(response.json())
+
+# Wait for training to complete
+while True:
+    status = requests.get(f"{base_url}/training-status")
+    status_data = status.json()
+    if status_data.get("status") == "completed":
+        break
+    elif status_data.get("status") == "failed":
+        print(f"Training failed: {status_data.get('error')}")
+        break
+    time.sleep(2)
+
+# Step 5: Evaluate
+response = requests.post(f"{base_url}/evaluate-model")
+print(response.json())
+
+# Step 6: Save
+response = requests.post(
+    f"{base_url}/save-model",
+    json={"model_dir": "models"}
+)
+print(response.json())
 ```
 
 ## Running the API
