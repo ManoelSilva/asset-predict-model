@@ -7,8 +7,7 @@ from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
 from b3.service.pipeline.model.training_config import TrainingConfig
-from b3.service.pipeline.model.factory import ModelFactory
-from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model, normalize_model_type
+from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model, normalize_model_type, create_model_from_config
 from b3.utils.api_handler_utils import ApiHandlerUtils
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_N_JOBS, MODEL_STORAGE_KEY
 
@@ -88,7 +87,7 @@ class ModelTrainingHandler:
     def _run_training_pipeline(self, config: TrainingConfig):
         try:
             # Create model instance using factory
-            model = ModelFactory.get_model(config.model_type)
+            model = create_model_from_config(config)
 
             # Handle different model types
             if is_rf_model(config.model_type):

@@ -1,6 +1,5 @@
 """
 Utility functions for model type handling and normalization.
-Centralizes model type alias handling to eliminate duplication.
 """
 
 
@@ -73,3 +72,23 @@ def is_lstm_model(model_type: str) -> bool:
     """
     return normalize_model_type(model_type) == "lstm"
 
+
+def create_model_from_config(config):
+    """
+    Create a model instance from a TrainingConfig object.
+
+    Args:
+        config: TrainingConfig object containing model parameters
+
+    Returns:
+        BaseModel: Instantiated model
+    """
+    from b3.service.pipeline.model.factory import ModelFactory
+
+    model_params = {}
+    if is_rf_model(config.model_type):
+        model_params = config.get_rf_config_dict()
+    elif is_lstm_model(config.model_type):
+        model_params = config.get_lstm_config_dict()
+
+    return ModelFactory.get_model(config.model_type, **model_params)

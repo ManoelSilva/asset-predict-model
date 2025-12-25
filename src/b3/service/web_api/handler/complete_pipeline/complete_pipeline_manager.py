@@ -4,9 +4,8 @@ from typing import Tuple, Dict
 from asset_model_data_storage.data_storage_service import DataStorageService
 
 from b3.service.data.db.b3_featured.data_loading_service import DataLoadingService
-from b3.service.pipeline.model.factory import ModelFactory
 from b3.service.pipeline.model.training_config import TrainingConfig
-from b3.service.pipeline.model.utils import normalize_model_type
+from b3.service.pipeline.model.utils import normalize_model_type, create_model_from_config
 from b3.service.pipeline.model_preprocessing_service import PreprocessingService
 
 
@@ -55,7 +54,7 @@ class CompletePipelineManagerService(object):
 
         # Step 3: Create model using factory pattern with automatic config creation
         try:
-            model = ModelFactory.get_model(config.model_type, **config.get_all_config_dict())
+            model = create_model_from_config(config)
         except ValueError as e:
             logging.error(f"Error creating model: {str(e)}")
             raise
