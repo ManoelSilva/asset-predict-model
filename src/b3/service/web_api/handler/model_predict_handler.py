@@ -1,4 +1,5 @@
 import logging
+import threading
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,7 @@ from flask import request, jsonify
 from b3.service.pipeline.model.factory import ModelFactory
 from b3.service.pipeline.model.utils import is_lstm_model
 from b3.service.web_api.asset_api_client import AssetApiClient
+from b3.service.data.db.prediction.prediction_loader import PredictionDataLoader
 from constants import FEATURE_SET
 
 
@@ -30,6 +32,7 @@ class ModelPredictHandler:
         self._log_api_activity = log_api_activity
         self._preprocessing_service = preprocessing_service
         self._storage_service = storage_service or DataStorageService()
+        self._prediction_loader = PredictionDataLoader()
 
     def _load_model(self, model_type='rf'):
         """Helper to load model from pipeline or storage using factory pattern."""
@@ -330,6 +333,18 @@ class ModelPredictHandler:
 
         return None, None, None, None
 
+    def _async_save_prediction(self, ticker, features, prediction, model_type, date=None, predicted_price=None):
+        """Helper to save prediction in a background thread."""
+        try:
+            thread = threading.Thread(
+                target=self._prediction_loader.save_prediction,
+                args=(ticker, features, prediction, model_type, date, predicted_price)
+            )
+            thread.daemon = True
+            thread.start()
+        except Exception as e:
+            logging.error(f"Failed to start prediction saving thread: {e}")
+
     def predict_data_handler(self):
         """Make predictions using the trained pipeline."""
         try:
@@ -392,6 +407,22 @@ class ModelPredictHandler:
                 )
                 return jsonify(resp), 400
 
+            # Extract date for logging/saving
+            date_val = None
+            for col in ['date', 'datetime', 'timestamp', 'created_at']:
+                if col in new_data.columns:
+                    val = new_data.iloc[0][col]
+                    try:
+                        # Ensure we get a proper YYYY-MM-DD string
+                        dt = pd.to_datetime(val)
+                        if pd.notna(dt):
+                            date_val = dt.strftime('%Y-%m-%d')
+                    except Exception as e:
+                        logging.warning(f"Could not parse date column {col} with value {val}: {e}")
+                    
+                    if date_val:
+                        break
+
             # Handle LSTM models differently - they need sequences, not single rows
             if is_lstm_model(model_type):
                 # Try to build sequence from historical data if available
@@ -445,6 +476,17 @@ class ModelPredictHandler:
                         response_data=resp,
                         status='success'
                     )
+
+                    # Async save prediction
+                    self._async_save_prediction(
+                        ticker,
+                        X_seq,  # Save the sequence used
+                        predictions,
+                        model_type,
+                        date=date_val,
+                        predicted_price=predicted_price
+                    )
+
                     return jsonify(resp)
                 else:
                     # No historical data available, return informative error with steps to fix
@@ -534,6 +576,17 @@ class ModelPredictHandler:
                 response_data=resp,
                 status='success'
             )
+
+            # Async save prediction
+            self._async_save_prediction(
+                ticker,
+                x_prediction,
+                predictions,
+                model_type,
+                date=date_val,
+                predicted_price=None
+            )
+
             return jsonify(resp)
         except ValueError as e:
             if "infinity" in str(e).lower() or "float32" in str(e).lower():

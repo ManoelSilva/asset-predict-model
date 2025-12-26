@@ -20,6 +20,7 @@ from b3.service.web_api.handler.model_predict_handler import ModelPredictHandler
 from b3.service.web_api.handler.model_saving_handler import ModelSavingHandler
 from b3.service.web_api.handler.model_training_handler import ModelTrainingHandler
 from b3.service.web_api.handler.pipeline_status_handler import PipelineStatusHandler
+from b3.service.web_api.handler.transfer_learning_handler import TransferLearningHandler
 from b3.utils.api_handler_utils import ApiHandlerUtils
 from constants import DEFAULT_API_HOST, DEFAULT_API_PORT
 
@@ -82,7 +83,8 @@ class B3ModelAPI:
             'pipeline_status': PipelineStatusHandler(pipeline_state, log_api_activity),
             'complete_pipeline': CompletePipelineHandler(pipeline_state, log_api_activity, data_loading_service,
                                                          preprocessing_service, storage_service),
-            'predict': ModelPredictHandler(pipeline_state, log_api_activity, preprocessing_service, storage_service)
+            'predict': ModelPredictHandler(pipeline_state, log_api_activity, preprocessing_service, storage_service),
+            'transfer_learning': TransferLearningHandler(pipeline_state, log_api_activity, storage_service)
         }
         return handlers
 
@@ -104,6 +106,8 @@ class B3ModelAPI:
         self._app.route('/api/b3/clear-state', methods=['POST'])(self._handlers['pipeline_status']
                                                                  .clear_state_handler)
         self._app.route('/api/b3/predict', methods=['POST'])(self._handlers['predict'].predict_data_handler)
+        self._app.route('/api/b3/transfer-learning', methods=['POST'])(
+            self._handlers['transfer_learning'].run_transfer_learning)
 
     def run(self, host=DEFAULT_API_HOST, port=DEFAULT_API_PORT):
         logging.info(f"Starting B3 Model API on {host}:{port}")

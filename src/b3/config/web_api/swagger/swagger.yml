@@ -398,3 +398,56 @@ paths:
                   message:
                     type: string
                     example: Error making predictions
+
+  /api/b3/transfer-learning:
+    post:
+      summary: Transfer learning (fine-tuning) for LSTM models
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                epochs:
+                  type: integer
+                  default: 5
+                  description: Number of epochs for fine-tuning
+                learning_rate:
+                  type: number
+                  format: float
+                  default: 0.0001
+                  description: Learning rate for fine-tuning
+                ticker_filter:
+                  type: array
+                  items:
+                    type: string
+                  description: List of tickers to use for fine-tuning (defaults to all available labeled data)
+                  example: ["PETR4", "VALE3"]
+      responses:
+        '200':
+          description: Transfer learning completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Transfer learning completed successfully.
+                  metrics:
+                    type: object
+                    description: Evaluation metrics of the fine-tuned model
+                  model_path:
+                    type: string
+                    description: Path to the saved model
+                  samples_used:
+                    type: integer
+                    description: Number of samples used for fine-tuning
+        '400':
+          description: Bad request
+        '500':
+          description: Internal server error

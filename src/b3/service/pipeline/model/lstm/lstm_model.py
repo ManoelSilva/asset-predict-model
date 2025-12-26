@@ -71,7 +71,7 @@ class LSTMModel(BaseModel):
             trained_model, X_val, yA_val, X_test, yA_test, df_processed,
             p0_val=p0_val, pf_val=pf_val, p0_test=p0_test, pf_test=pf_test
         )
-        
+
         # Add training history to evaluation results
         if hasattr(trained_model, 'history'):
             evaluation_results['training_history'] = trained_model.history
@@ -378,6 +378,42 @@ class LSTMModel(BaseModel):
 
         logging.info("LSTM training completed successfully")
         return clf
+
+    def fine_tune_model(self, X: np.ndarray, yA: pd.Series, yR: np.ndarray, **kwargs) -> B3PytorchMTLModel:
+        """
+        Fine-tune existing LSTM model on new data.
+        
+        Args:
+            X: Feature sequences
+            yA: Action targets
+            yR: Return targets
+            **kwargs: Additional parameters (e.g. learning_rate, epochs)
+            
+        Returns:
+            Fine-tuned B3PytorchMTLModel
+        """
+        if not self.is_trained or self.model is None:
+            raise ValueError("Model must be trained before fine-tuning")
+
+        # Update config with any overrides
+        current_config = self.config
+
+        # We might want a smaller learning rate for fine-tuning
+        lr = kwargs.get('learning_rate', current_config.learning_rate * 0.1)
+        epochs = kwargs.get('epochs', 5)  # Default to fewer epochs for fine-tuning
+
+        # Update model config temporarily for this run
+        # Note: self.model is a B3PytorchMTLModel wrapper instance
+        self.model.config.learning_rate = lr
+        self.model.config.epochs = epochs
+
+        logging.info(f"Fine-tuning LSTM model with lr={lr}, epochs={epochs}")
+
+        # Fit continues training on existing weights
+        self.model.fit(X, yA, yR)
+
+        logging.info("LSTM fine-tuning completed")
+        return self.model
 
     def _enrich_df_with_predictions(self, df: pd.DataFrame, max_samples: int = 5):
         """
