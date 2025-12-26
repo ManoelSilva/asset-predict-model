@@ -1,17 +1,41 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import logging
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, TensorDataset, random_split, WeightedRandomSampler
 import numpy as np
 from pandas import Series
 from typing import Optional
+from sklearn.metrics import f1_score
 
 from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
 
 LABELS = ["buy", "sell", "hold"]
 LABEL_TO_ID = {label: idx for idx, label in enumerate(LABELS)}
 ID_TO_LABEL = {idx: label for label, idx in LABEL_TO_ID.items()}
+
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=None, gamma=2.0, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        # inputs: logits
+        # targets: labels
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.alpha)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
 
 
 class LSTMNet(nn.Module):
@@ -53,7 +77,7 @@ class B3PytorchMTLModel:
         self.history = {
             'loss': [],
             'val_loss': [],
-            'val_acc': [],
+            'val_f1': [],
             'val_mae': []
         }
 
@@ -62,7 +86,7 @@ class B3PytorchMTLModel:
         self.history = {
             'loss': [],
             'val_loss': [],
-            'val_acc': [],
+            'val_f1': [],
             'val_mae': []
         }
 
@@ -71,24 +95,24 @@ class B3PytorchMTLModel:
             y_action_clean = y_action.astype(str).str.replace("_target", "", regex=False)
         else:
             y_action_clean = Series(y_action).astype(str).str.replace("_target", "", regex=False)
-            
+
         y_ids = np.array([LABEL_TO_ID[v] for v in y_action_clean], dtype=np.int64)
-        
+
         # Convert to tensors
         if isinstance(X, torch.Tensor):
             X_tensor = X.float()
         else:
             X_tensor = torch.tensor(X, dtype=torch.float32)
-            
+
         y_action_tensor = torch.tensor(y_ids, dtype=torch.long)
-        
+
         if isinstance(y_return, torch.Tensor):
             y_return_tensor = y_return.float()
         else:
             y_return_tensor = torch.tensor(y_return, dtype=torch.float32)
-            
+
         if y_return_tensor.dim() == 1:
-            y_return_tensor = y_return_tensor.unsqueeze(1) # shape (N, 1)
+            y_return_tensor = y_return_tensor.unsqueeze(1)  # shape (N, 1)
 
         dataset = TensorDataset(X_tensor, y_action_tensor, y_return_tensor)
 
@@ -97,15 +121,44 @@ class B3PytorchMTLModel:
         train_size = len(dataset) - val_size
         train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
-        train_loader = DataLoader(train_dataset, batch_size=self.config.batch_size, shuffle=True)
+        # -----------------------------------------------------
+        # OVERSAMPLING & WEIGHTING SETUP
+        # -----------------------------------------------------
+        # Get labels for training data subset
+        train_indices = train_dataset.indices
+        y_train_tensor = dataset.tensors[1][train_indices]  # Tensor of labels
+        y_train_np = y_train_tensor.cpu().numpy()
+
+        # Calculate class counts in training set
+        class_counts = np.bincount(y_train_np, minlength=len(LABELS))
+        # Handle zero counts safely
+        class_counts = np.maximum(class_counts, 1)
+
+        # Calculate weights: inverse frequency (1/N)
+        class_weights = 1.0 / class_counts
+
+        # Assign weight to each sample
+        sample_weights = class_weights[y_train_np]
+        sample_weights_tensor = torch.tensor(sample_weights, dtype=torch.float)
+
+        # Create WeightedRandomSampler
+        # This will oversample minority classes by picking them more often
+        sampler = WeightedRandomSampler(
+            weights=sample_weights_tensor,
+            num_samples=len(sample_weights_tensor),
+            replacement=True
+        )
+
+        train_loader = DataLoader(train_dataset, batch_size=self.config.batch_size, sampler=sampler)
         val_loader = DataLoader(val_dataset, batch_size=self.config.batch_size, shuffle=False)
 
         # Loss and Optimizer
-        criterion_action = nn.CrossEntropyLoss()
+        # Using FocalLoss for class imbalance handling on top of sampling
+        criterion_action = FocalLoss(gamma=2.0)
         criterion_return = nn.MSELoss()
         optimizer = optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
 
-        logging.info(f"Training on {self.device}")
+        logging.info(f"Training on {self.device} with Oversampling & FocalLoss")
 
         for epoch in range(self.config.epochs):
             self.model.train()
@@ -134,8 +187,10 @@ class B3PytorchMTLModel:
             # Validation
             self.model.eval()
             val_loss = 0.0
-            val_acc = 0.0
             val_mae = 0.0
+
+            all_preds = []
+            all_targets = []
 
             with torch.no_grad():
                 for batch_X, batch_yA, batch_yR in val_loader:
@@ -154,23 +209,25 @@ class B3PytorchMTLModel:
 
                     # Metrics
                     preds_cls = torch.argmax(pred_logits, dim=1)
-                    val_acc += (preds_cls == batch_yA).sum().item()
+                    all_preds.extend(preds_cls.cpu().numpy())
+                    all_targets.extend(batch_yA.cpu().numpy())
+
                     val_mae += torch.abs(pred_return - batch_yR).sum().item()
 
             avg_val_loss = val_loss / len(val_dataset)
-            avg_val_acc = val_acc / len(val_dataset)
+            val_f1 = f1_score(all_targets, all_preds, average='macro')
             avg_val_mae = val_mae / len(val_dataset)
 
             # Store history
             self.history['loss'].append(avg_loss)
             self.history['val_loss'].append(avg_val_loss)
-            self.history['val_acc'].append(avg_val_acc)
+            self.history['val_f1'].append(val_f1)
             self.history['val_mae'].append(avg_val_mae)
 
             logging.info(f"Epoch {epoch + 1}/{self.config.epochs} - "
                          f"loss: {avg_loss:.4f} - "
                          f"val_loss: {avg_val_loss:.4f} - "
-                         f"val_acc: {avg_val_acc:.4f} - "
+                         f"val_f1: {val_f1:.4f} - "
                          f"val_mae: {avg_val_mae:.4f}")
 
         return self
@@ -181,7 +238,7 @@ class B3PytorchMTLModel:
             X_tensor = X.float().to(self.device)
         else:
             X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
-        
+
         # Process in batches if X is large to avoid OOM
         batch_size = 256
         predictions = []
@@ -202,7 +259,7 @@ class B3PytorchMTLModel:
             X_tensor = X.float().to(self.device)
         else:
             X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
-        
+
         batch_size = 256
         probs_list = []
 
@@ -221,7 +278,7 @@ class B3PytorchMTLModel:
             X_tensor = X.float().to(self.device)
         else:
             X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
-        
+
         batch_size = 256
         returns = []
 

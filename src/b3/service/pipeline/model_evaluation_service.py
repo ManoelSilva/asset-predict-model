@@ -7,7 +7,7 @@ import numpy as np
 from asset_model_data_storage.data_storage_service import DataStorageService
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator
-from sklearn.metrics import classification_report, mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import classification_report, mean_absolute_error, mean_squared_error, r2_score, confusion_matrix
 
 from b3.service.data.db.evaluation.data_loader import EvaluationDataLoader
 from b3.service.pipeline.plotter import B3DashboardPlotter
@@ -65,6 +65,11 @@ class B3ModelEvaluationService:
         logging.info(f"Evaluating model on {set_name} set...")
 
         y_pred = model.predict(X)
+
+        # Calculate Confusion Matrix
+        cm = confusion_matrix(y, y_pred, labels=['buy', 'sell', 'hold'])
+        logging.info(f"Confusion Matrix ({set_name}):\n{cm}")
+
         report = classification_report(
             y,
             y_pred,
@@ -72,6 +77,9 @@ class B3ModelEvaluationService:
             output_dict=True,
             zero_division=0
         )
+
+        # Add confusion matrix to report (as list for JSON serialization)
+        report['confusion_matrix'] = cm.tolist()
 
         print(f"\n{classification_report(y, y_pred, target_names=['buy', 'sell', 'hold'])}")
         logging.info(f"Model evaluation completed on {set_name} set")
