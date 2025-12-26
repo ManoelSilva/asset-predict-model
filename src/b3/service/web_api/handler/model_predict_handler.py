@@ -8,6 +8,7 @@ from flask import request, jsonify
 from b3.service.pipeline.model.factory import ModelFactory
 from b3.service.pipeline.model.utils import is_lstm_model
 from b3.service.web_api.asset_api_client import AssetApiClient
+from b3.utils.api_handler_utils import ApiHandlerUtils
 from constants import FEATURE_SET
 
 
@@ -33,11 +34,8 @@ class ModelPredictHandler:
 
     def _load_model(self, model_type='rf'):
         """Helper to load model from pipeline or storage using factory pattern."""
-        model = None
-        model_source = None
-
         if 'trained_model' in self._pipeline_state:
-            model = self._deserialize_model(self._pipeline_state['trained_model'])
+            model = ApiHandlerUtils.deserialize_model(self._pipeline_state['trained_model'])
             model_source = 'pipeline'
         else:
             try:

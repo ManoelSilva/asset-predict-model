@@ -88,7 +88,6 @@ Execute the entire training pipeline in a single API call. This is the recommend
 **Response**: 
 - Returns immediately with status "running"
 - Training executes in background
-- Check status via `GET /api/b3/training-status`
 - Results available in pipeline state when complete
 
 **Pipeline Steps Executed**:
@@ -198,7 +197,7 @@ Execute each pipeline step independently for fine-grained control.
     "model_type": "rf"
   }
   ```
-- **Note**: Training executes in background; check status via `GET /api/b3/training-status`
+- **Note**: Training executes in background
 - **State**: Stores trained model when complete
 
 #### Step 5: Evaluate Model
@@ -247,10 +246,6 @@ Execute each pipeline step independently for fine-grained control.
 **GET /api/b3/pipeline-status**
 - Returns current pipeline state and intermediate results
 - Useful for debugging and monitoring
-
-**GET /api/b3/training-status**
-- Returns training job status (running, completed, failed)
-- Includes error messages if training failed
 
 **POST /api/b3/clear-state**
 - Clears all pipeline state
@@ -337,10 +332,6 @@ response = requests.post(
         "val_size": 0.2
     }
 )
-
-# Check training status
-status = requests.get("http://localhost:5000/api/b3/training-status")
-print(status.json())
 ```
 
 #### Step-by-Step Mode
@@ -373,14 +364,12 @@ response = requests.post(
 )
 print(response.json())
 
-# Wait for training to complete
+# Wait for training to complete (check pipeline status)
 while True:
-    status = requests.get(f"{base_url}/training-status")
+    status = requests.get(f"{base_url}/pipeline-status")
     status_data = status.json()
-    if status_data.get("status") == "completed":
-        break
-    elif status_data.get("status") == "failed":
-        print(f"Training failed: {status_data.get('error')}")
+    pipeline_state = status_data.get("pipeline_state", {})
+    if pipeline_state.get("model_trained"):
         break
     time.sleep(2)
 
@@ -428,7 +417,7 @@ The API will be available at `http://localhost:5000`
 
 ## Cross-References
 
-- For CLI usage and overall project setup, see the main [README.md](../../../../README.md).
+- For overall project setup, see the main [README.md](../../../../README.md).
 - For API endpoint details and OpenAPI/Swagger documentation, see [swagger.yml](../../config/web_api/swagger/swagger.yml) and the main README.
 
 ## Additional Notes

@@ -71,7 +71,7 @@ class LSTMModel(BaseModel):
             trained_model, X_val, yA_val, X_test, yA_test, df_processed,
             p0_val=p0_val, pf_val=pf_val, p0_test=p0_test, pf_test=pf_test
         )
-        
+
         # Add training history to evaluation results
         if hasattr(trained_model, 'history'):
             evaluation_results['training_history'] = trained_model.history
@@ -117,20 +117,6 @@ class LSTMModel(BaseModel):
 
         logging.info(f"Built {len(X_seq)} sequences for LSTM training")
         return X_seq, yA_seq, yR_seq, p0_seq, pf_seq
-
-    @staticmethod
-    def _group_keys(df: DataFrame):
-        if "ticker" in df.columns:
-            return list(df["ticker"].astype(str).unique())
-        return [None]
-
-    @staticmethod
-    def _df_for_group(df: DataFrame, group: Optional[str]) -> DataFrame:
-        gdf = df if group is None else df[df["ticker"].astype(str) == group]
-        for col in ["date", "datetime", "timestamp"]:
-            if col in gdf.columns:
-                return gdf.sort_values(col)
-        return gdf
 
     def _build_sequences(self, X_df: DataFrame, y_action: Series, df_full: DataFrame,
                          price_col: str = "close", lookback: int = 32, horizon: int = 1
@@ -552,44 +538,6 @@ class LSTMModel(BaseModel):
             raise ValueError("Invalid input data for prediction")
 
         return self.model.predict_return(X)
-
-    def predict_price(self, X_window: pd.DataFrame, lookback: int = None, price_col: str = None) -> float:
-        """
-        Predict next-step price using trained LSTM model from a single asset window.
-        
-        Args:
-            X_window: Last lookback rows of features including price_col
-            lookback: Number of lookback steps (uses rf default if None)
-            price_col: Price column name (uses rf default if None)
-            
-        Returns:
-            Predicted price
-        """
-        if not self.is_trained or self.model is None:
-            raise ValueError("Model must be trained before making predictions")
-
-        lookback = lookback or self.config.lookback
-        price_col = price_col or self.config.price_col
-
-        # Get features (excluding price column for sequence building)
-        feature_cols = [col for col in X_window.columns if col != price_col]
-        Xw = X_window[feature_cols].values.astype("float32")
-
-        if len(Xw) < lookback:
-            raise ValueError(f"Need at least {lookback} rows to predict with LSTM")
-
-        # Create sequence
-        X_seq = Xw[-lookback:][None, :, :]
-
-        # Predict return
-        ret_pred = self.model.predict_return(X_seq)
-        ret_val = float(ret_pred.reshape(-1)[0])
-
-        # Calculate predicted price
-        last_price = float(X_window[price_col].iloc[-1])
-        predicted_price = last_price * (1.0 + ret_val)
-
-        return predicted_price
 
     def save_model(self, model: B3PytorchMTLModel, model_dir: str) -> str:
         """

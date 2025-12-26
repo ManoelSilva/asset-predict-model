@@ -14,7 +14,6 @@ Este projeto fornece ferramentas e modelos para previsão de preços de ativos, 
 - `src/` - Código fonte principal
   - `b3/` - Ferramentas para ativos B3
   - `models/` - Modelos pré-treinados
-  - `app.py` - Ponto de entrada da aplicação
 - `requirements.txt` - Dependências Python
 
 ## Primeiros Passos
@@ -23,51 +22,11 @@ Este projeto fornece ferramentas e modelos para previsão de preços de ativos, 
    pip install -r requirements.txt
    ```
 2. **Explore o código:**
-   - Veja `src/app.py` para a lógica principal da aplicação.
    - Explore `src/b3/` para módulos específicos de ativos.
 
 ## Requisitos
 - Python 3.12+
 - Veja `requirements.txt` para todas as dependências
-
-## Uso
-
-Você pode usar a aplicação pela linha de comando (CLI) tanto para treinamento quanto para predição:
-
-### Treinar o Modelo B3
-
-Treine o modelo e especifique o número de jobs paralelos (núcleos de CPU) para o treinamento:
-
-```bash
-python src/app.py train --n_jobs 8
-```
-- `train`: Executa o processo de treinamento.
-- `--n_jobs 8`: (Opcional) Número de jobs paralelos para o treinamento. O padrão é 5 se não especificado.
-
-### Predizer Usando o Modelo B3
-
-Faça predições para um ticker específico:
-
-```bash
-python src/app.py predict --ticker BTCI11
-```
-- `predict`: Executa o processo de predição.
-- `--ticker BTCI11`: (Obrigatório) O ticker que você deseja prever.
-
-### Ajuda
-
-Para ver todos os comandos e opções disponíveis:
-
-```bash
-python src/app.py --help
-```
-
-Ou para um comando específico:
-
-```bash
-python src/app.py train --help
-python src/app.py predict --help
-```
 
 ## Visão Geral da Arquitetura
 
@@ -262,7 +221,6 @@ Uma API REST baseada em Flask expõe todas as etapas de treinamento e predição
 #### Predição e Status
 - `POST /api/b3/predict`: Faz predições para um ticker específico (suporta rf e lstm)
 - `GET /api/b3/pipeline-status`: Consulta o status atual do pipeline
-- `GET /api/b3/training-status`: Consulta o status do treinamento
 - `POST /api/b3/clear-state`: Limpa o estado do pipeline
 
 ### OpenAPI/Swagger
@@ -441,11 +399,6 @@ A API do modelo integra com o frontend Angular:
 - **Cache**: Redis recomendado para cenários de alto tráfego
 
 ## Monitoramento e Logging
-
-### Health Checks
-- **Endpoint**: `GET /api/b3/status`
-- **Métricas**: Modelo carregado, conexão de dados, latência de predição
-- **Alertas**: Serviço down, falhas de predição
 
 ### Logging
 - **Nível**: INFO para operações normais, ERROR para falhas
