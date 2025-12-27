@@ -44,6 +44,11 @@ class TrainModelParams:
     # LSTM-specific parameters (optional)
     yR_train: Optional[np.ndarray] = None
 
+    # Validation data (optional)
+    X_val: Optional[Any] = None
+    y_val: Optional[Any] = None
+    yR_val: Optional[np.ndarray] = None
+
     def has_lstm_params(self) -> bool:
         """Check if this parameter object contains LSTM-specific parameters."""
         return self.yR_train is not None

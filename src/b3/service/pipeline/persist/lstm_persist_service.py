@@ -2,7 +2,7 @@ import logging
 import os
 import tempfile
 from io import BytesIO
-
+import joblib
 import torch
 from asset_model_data_storage.data_storage_service import DataStorageService
 
@@ -11,10 +11,11 @@ from b3.service.pipeline.persist.base_persist_service import BasePersistService
 
 class LSTMPersistService(BasePersistService):
     """
-    Service responsible for saving and loading trained LSTM models (PyTorch).
+    Service responsible for saving and loading trained LSTM models (PyTorch) and scalers.
     """
 
     DEFAULT_MODEL_NAME = "b3_lstm_mtl.pt"
+    DEFAULT_SCALER_NAME = "b3_lstm_scaler.joblib"
 
     def __init__(self, storage_service: DataStorageService = None):
         """
@@ -97,6 +98,79 @@ class LSTMPersistService(BasePersistService):
             checkpoint = torch.load(tmp_path, map_location=torch.device('cpu'))
             logging.info("PyTorch model checkpoint loaded successfully")
             return checkpoint
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception as e:
+                    logging.warning(f"Failed to remove temp file {tmp_path}: {e}")
+
+    def save_scaler(self, scaler, model_dir: str = "models", scaler_name: str = None) -> str:
+        """
+        Save a fitted scaler using joblib.
+        
+        Args:
+            scaler: Fitted scaler (StandardScaler, etc.)
+            model_dir: Directory to save the scaler
+            scaler_name: Name of the scaler file
+            
+        Returns:
+            str: Path to saved scaler
+        """
+        scaler_name = scaler_name or self.DEFAULT_SCALER_NAME
+        logging.info(f"Saving scaler to {model_dir}...")
+        scaler_path = os.path.join(model_dir, scaler_name).replace('\\', '/')
+
+        if self._storage_service.is_local_storage():
+            self._storage_service.create_directory(model_dir)
+
+        # Create a temp file
+        fd, tmp_path = tempfile.mkstemp(suffix=".joblib")
+        os.close(fd)
+
+        try:
+            joblib.dump(scaler, tmp_path)
+
+            with open(tmp_path, "rb") as f:
+                scaler_bytes = BytesIO(f.read())
+
+            saved_path = self._storage_service.save_file(scaler_path, scaler_bytes, 'application/octet-stream')
+            logging.info(f"Scaler saved: {saved_path}")
+            return saved_path
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception as e:
+                    logging.warning(f"Failed to remove temp file {tmp_path}: {e}")
+
+    def load_scaler(self, scaler_path: str):
+        """
+        Load a saved scaler from storage.
+        
+        Args:
+            scaler_path: Path to the saved scaler file
+            
+        Returns:
+            object: Loaded scaler
+        """
+        logging.info(f"Loading scaler from {scaler_path}...")
+        if not self._storage_service.file_exists(scaler_path):
+            raise FileNotFoundError(f"Scaler file not found: {scaler_path}")
+
+        data = self._storage_service.load_file(scaler_path)
+
+        # Create a temp file
+        fd, tmp_path = tempfile.mkstemp(suffix=".joblib")
+        os.close(fd)
+
+        try:
+            with open(tmp_path, "wb") as f:
+                f.write(data)
+
+            scaler = joblib.load(tmp_path)
+            logging.info("Scaler loaded successfully")
+            return scaler
         finally:
             if os.path.exists(tmp_path):
                 try:

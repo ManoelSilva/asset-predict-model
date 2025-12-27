@@ -81,15 +81,8 @@ class B3PytorchMTLModel:
             'val_mae': []
         }
 
-    def fit(self, X, y_action, y_return):
-        # Reset history
-        self.history = {
-            'loss': [],
-            'val_loss': [],
-            'val_f1': [],
-            'val_mae': []
-        }
-
+    @staticmethod
+    def _prepare_tensors(X, y_action, y_return):
         # Prepare targets
         if hasattr(y_action, 'astype'):
             y_action_clean = y_action.astype(str).str.replace("_target", "", regex=False)
@@ -114,19 +107,42 @@ class B3PytorchMTLModel:
         if y_return_tensor.dim() == 1:
             y_return_tensor = y_return_tensor.unsqueeze(1)  # shape (N, 1)
 
-        dataset = TensorDataset(X_tensor, y_action_tensor, y_return_tensor)
+        return X_tensor, y_action_tensor, y_return_tensor
 
-        # Validation split (20%)
-        val_size = int(0.2 * len(dataset))
-        train_size = len(dataset) - val_size
-        train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    def fit(self, X, y_action, y_return, X_val=None, y_val=None, yR_val=None):
+        # Reset history
+        self.history = {
+            'loss': [],
+            'val_loss': [],
+            'val_f1': [],
+            'val_mae': []
+        }
+
+        X_train_t, y_train_t, yR_train_t = self._prepare_tensors(X, y_action, y_return)
+
+        if X_val is not None and y_val is not None and yR_val is not None:
+            train_dataset = TensorDataset(X_train_t, y_train_t, yR_train_t)
+            X_val_t, y_val_t, yR_val_t = self._prepare_tensors(X_val, y_val, yR_val)
+            val_dataset = TensorDataset(X_val_t, y_val_t, yR_val_t)
+            logging.info("Using provided validation set")
+        else:
+            dataset = TensorDataset(X_train_t, y_train_t, yR_train_t)
+            # Validation split (20%)
+            val_size = int(0.2 * len(dataset))
+            train_size = len(dataset) - val_size
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+            logging.info(f"Splitting training data: Train={train_size}, Val={val_size}")
 
         # -----------------------------------------------------
         # OVERSAMPLING & WEIGHTING SETUP
         # -----------------------------------------------------
         # Get labels for training data subset
-        train_indices = train_dataset.indices
-        y_train_tensor = dataset.tensors[1][train_indices]  # Tensor of labels
+        if isinstance(train_dataset, torch.utils.data.Subset):
+            indices = train_dataset.indices
+            y_train_tensor = train_dataset.dataset.tensors[1][indices]
+        else:
+            y_train_tensor = train_dataset.tensors[1]
+
         y_train_np = y_train_tensor.cpu().numpy()
 
         # Calculate class counts in training set
@@ -163,6 +179,8 @@ class B3PytorchMTLModel:
         for epoch in range(self.config.epochs):
             self.model.train()
             total_loss = 0.0
+            total_loss_action = 0.0
+            total_loss_return = 0.0
 
             for batch_X, batch_yA, batch_yR in train_loader:
                 batch_X, batch_yA, batch_yR = batch_X.to(self.device), batch_yA.to(self.device), batch_yR.to(
@@ -181,8 +199,12 @@ class B3PytorchMTLModel:
                 optimizer.step()
 
                 total_loss += loss.item() * batch_X.size(0)
+                total_loss_action += loss_action.item() * batch_X.size(0)
+                total_loss_return += loss_return.item() * batch_X.size(0)
 
             avg_loss = total_loss / len(train_dataset)
+            avg_loss_action = total_loss_action / len(train_dataset)
+            avg_loss_return = total_loss_return / len(train_dataset)
 
             # Validation
             self.model.eval()
@@ -225,7 +247,7 @@ class B3PytorchMTLModel:
             self.history['val_mae'].append(avg_val_mae)
 
             logging.info(f"Epoch {epoch + 1}/{self.config.epochs} - "
-                         f"loss: {avg_loss:.4f} - "
+                         f"loss: {avg_loss:.4f} (Act: {avg_loss_action:.4f}, Ret: {avg_loss_return:.4f}) - "
                          f"val_loss: {avg_val_loss:.4f} - "
                          f"val_f1: {val_f1:.4f} - "
                          f"val_mae: {avg_val_mae:.4f}")

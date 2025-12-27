@@ -20,7 +20,7 @@ class LSTMPredictionEnricher:
         self._sequence_builder = sequence_builder
         self._config = config
 
-    def enrich_df_with_predictions(self, df: pd.DataFrame, model, max_samples: int = 5) -> None:
+    def enrich_df_with_predictions(self, df: pd.DataFrame, model, max_samples: int = 5, scaler=None) -> None:
         """
         Add predictions to the dataframe for visualization.
         Operates in-place on the dataframe.
@@ -30,6 +30,7 @@ class LSTMPredictionEnricher:
             df: Dataframe to enrich (modified in-place)
             model: Trained LSTM model
             max_samples: Maximum number of tickers to sample for predictions
+            scaler: Optional scaler to transform features before prediction
         """
 
         # Define ticker validator for LSTM (requires sufficient data points)
@@ -73,10 +74,23 @@ class LSTMPredictionEnricher:
                 return
 
             logging.info(f"Predicting on {len(X_seq)} sequences for visualization...")
+            
+            # Scale features if scaler is provided
+            if scaler is not None:
+                N, T, F = X_seq.shape
+                X_seq_scaled = scaler.transform(X_seq.reshape(N * T, F)).reshape(N, T, F)
+            else:
+                X_seq_scaled = X_seq
+                # Warn if no scaler provided but model might expect one?
+                # We can't know for sure here unless we inspect the model, but usually scaler is needed.
 
             # Batch prediction
-            pred_actions = model.predict(X_seq)
-            pred_returns = model.predict_return(X_seq)
+            if hasattr(model, 'predict_return'):
+                pred_actions = model.predict(X_seq_scaled)
+                pred_returns = model.predict_return(X_seq_scaled)
+            else:
+                logging.warning("Model does not have predict_return method")
+                return
 
             # Map predictions back to the dataframe indices
             current_idx = 0
@@ -108,3 +122,5 @@ class LSTMPredictionEnricher:
 
         except Exception as e:
             logging.warning(f"Failed to generate visualization predictions: {e}")
+            import traceback
+            logging.warning(traceback.format_exc())
