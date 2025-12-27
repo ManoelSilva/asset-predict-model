@@ -39,6 +39,23 @@ class LSTMModel(BaseModel):
         self._device = torch.device(
             "cuda" if torch.cuda.is_available() and os.environ.get('cuda_enabled', False) else "cpu")
 
+    @property
+    def _config(self) -> LSTMConfig:
+        """
+        Get LSTM configuration, ensuring it's not None.
+        
+        Returns:
+            LSTMConfig instance
+            
+        Raises:
+            ValueError: If config is None or not an LSTMConfig instance
+        """
+        if self.config is None:
+            raise ValueError("LSTM config is None. This should not happen as it's initialized with a default.")
+        if not isinstance(self.config, LSTMConfig):
+            raise ValueError(f"Expected LSTMConfig, got {type(self.config).__name__}")
+        return self.config
+
     def run_pipeline(self, X: pd.DataFrame, y: pd.Series, df_processed: pd.DataFrame, config: Any) -> Tuple[str, Dict]:
         """
         Runs the full LSTM training pipeline.
@@ -102,9 +119,9 @@ class LSTMModel(BaseModel):
         if df_processed is None:
             raise ValueError("df_processed is required for LSTM sequence building")
 
-        lookback = kwargs.get('lookback', self.config.lookback)
-        horizon = kwargs.get('horizon', self.config.horizon)
-        price_col = kwargs.get('price_col', self.config.price_col)
+        lookback = kwargs.get('lookback', self._config.lookback)
+        horizon = kwargs.get('horizon', self._config.horizon)
+        price_col = kwargs.get('price_col', self._config.price_col)
 
         logging.info(f"Building LSTM sequences with lookback={lookback}, horizon={horizon}")
 
@@ -335,19 +352,19 @@ class LSTMModel(BaseModel):
         Returns:
             Trained B3PytorchMTLModel
         """
-        lookback = kwargs.get('lookback', self.config.lookback)
+        lookback = kwargs.get('lookback', self._config.lookback)
         n_features = kwargs.get('n_features', X_train.shape[2])
 
         lstm_config = LSTMConfig(
             lookback=lookback,
-            horizon=self.config.horizon,
-            units=self.config.units,
-            dropout=self.config.dropout,
-            learning_rate=self.config.learning_rate,
-            epochs=self.config.epochs,
-            batch_size=self.config.batch_size,
-            loss_weight_action=self.config.loss_weight_action,
-            loss_weight_return=self.config.loss_weight_return
+            horizon=self._config.horizon,
+            units=self._config.units,
+            dropout=self._config.dropout,
+            learning_rate=self._config.learning_rate,
+            epochs=self._config.epochs,
+            batch_size=self._config.batch_size,
+            loss_weight_action=self._config.loss_weight_action,
+            loss_weight_return=self._config.loss_weight_return
         )
 
         logging.info(
@@ -385,7 +402,7 @@ class LSTMModel(BaseModel):
         check_limit = min(len(all_tickers), 20)
 
         for t in all_tickers[:check_limit]:
-            if len(df[df['ticker'] == t]) > self.config.lookback + self.config.horizon + 10:
+            if len(df[df['ticker'] == t]) > self._config.lookback + self._config.horizon + 10:
                 valid_tickers.append(t)
 
         sample_tickers = valid_tickers[:max_samples]
@@ -430,9 +447,9 @@ class LSTMModel(BaseModel):
             # Build sequences for all tickers at once
             X_seq, _, _, _, _ = self._build_sequences(
                 X_sub, y_sub, sub_df,
-                price_col=self.config.price_col,
-                lookback=self.config.lookback,
-                horizon=self.config.horizon
+                price_col=self._config.price_col,
+                lookback=self._config.lookback,
+                horizon=self._config.horizon
             )
 
             if len(X_seq) == 0:
@@ -454,7 +471,7 @@ class LSTMModel(BaseModel):
 
             for ticker, group in groups:
                 size = len(group)
-                n_w = size - self.config.horizon - self.config.lookback
+                n_w = size - self._config.horizon - self._config.lookback
 
                 if n_w > 0:
                     # The sequences correspond to the valid windows for this group
@@ -462,7 +479,7 @@ class LSTMModel(BaseModel):
                     # So predictions align with rows starting at `lookback` index within the group
 
                     # Indices in the original dataframe (group is a slice of sub_df)
-                    target_indices = group.index[self.config.lookback: self.config.lookback + n_w]
+                    target_indices = group.index[self._config.lookback: self._config.lookback + n_w]
 
                     # Extract predictions for this group
                     group_actions = pred_actions[current_idx: current_idx + n_w]
@@ -471,8 +488,8 @@ class LSTMModel(BaseModel):
                     # Calculate prices
                     # p0 is at `lookback - 1 + k`
                     # We need the prices at (lookback - 1) relative to group start
-                    p0_indices = group.index[self.config.lookback - 1: self.config.lookback - 1 + n_w]
-                    p0_values = group.loc[p0_indices, self.config.price_col].values.astype(float)
+                    p0_indices = group.index[self._config.lookback - 1: self._config.lookback - 1 + n_w]
+                    p0_values = group.loc[p0_indices, self._config.price_col].values.astype(float)
 
                     group_prices = p0_values * (1.0 + group_returns.flatten())
 
@@ -571,26 +588,26 @@ class LSTMModel(BaseModel):
         state_dict = checkpoint['state_dict']
 
         # Update config with loaded architecture params
-        # Note: We prefer to use the loaded architecture over self.config for the model structure
+        # Note: We prefer to use the loaded architecture over self._config for the model structure
         # to ensure the weights match.
 
         model_config = LSTMConfig(
-            lookback=self.config.lookback,
+            lookback=self._config.lookback,
             # This might be part of model/wrapper logic, but input_features drives the model input size.
-            horizon=self.config.horizon,
+            horizon=self._config.horizon,
             units=hidden_size,
             dropout=dropout,
             # Other params from current config or defaults
-            learning_rate=self.config.learning_rate,
-            epochs=self.config.epochs,
-            batch_size=self.config.batch_size,
-            loss_weight_action=self.config.loss_weight_action,
-            loss_weight_return=self.config.loss_weight_return
+            learning_rate=self._config.learning_rate,
+            epochs=self._config.epochs,
+            batch_size=self._config.batch_size,
+            loss_weight_action=self._config.loss_weight_action,
+            loss_weight_return=self._config.loss_weight_return
         )
 
         # Create wrapper model
         model = B3PytorchMTLModel(
-            input_timesteps=self.config.lookback,
+            input_timesteps=self._config.lookback,
             input_features=input_features,
             config=model_config,
             device=self._device
