@@ -5,9 +5,9 @@ from typing import Dict, Any, Tuple, Optional
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.preprocessing import StandardScaler
 from asset_model_data_storage.data_storage_service import DataStorageService
 
+from b3.service.pipeline.model.lstm.lstm_scale import LSTMScaler
 from b3.service.pipeline.model.lstm.pytorch_mtl_model import B3PytorchMTLModel
 from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
 from b3.service.pipeline.model.lstm.lstm_sequence_builder import LSTMSequenceBuilder
@@ -16,6 +16,7 @@ from b3.service.pipeline.model.lstm.lstm_prediction_enricher import LSTMPredicti
 from b3.service.pipeline.model.lstm.lstm_model_loader import LSTMModelLoader
 from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model.params import SplitDataParams, TrainModelParams, PrepareDataParams
+from b3.service.pipeline.model.utils import get_device_str
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.lstm_persist_service import LSTMPersistService
 
@@ -38,14 +39,13 @@ class LSTMModel(BaseModel):
         self._storage_service = storage_service or DataStorageService()
         self._saving_service = LSTMPersistService(self._storage_service)
         self._evaluation_service = B3ModelEvaluationService(self._storage_service)
-        self._device = torch.device(
-            "cuda" if torch.cuda.is_available() and os.environ.get('cuda_enabled', False) else "cpu")
+        self._device = torch.device(get_device_str())
 
         self._sequence_builder = LSTMSequenceBuilder(self._device)
         self._data_splitter = LSTMDataSplitter()
         self._prediction_enricher = LSTMPredictionEnricher(self._sequence_builder, self._config)
         self._model_loader = LSTMModelLoader(self._saving_service, self._config, self._device)
-        self._scaler = StandardScaler()
+        self._scaler = LSTMScaler()
 
     @property
     def _config(self) -> LSTMConfig:
@@ -100,25 +100,18 @@ class LSTMModel(BaseModel):
         # Scale Features
         logging.info("Fitting StandardScaler on training data...")
         # Reset scaler for new training
-        self._scaler = StandardScaler()
-        N, T, F = X_train.shape
-        
-        # Fit on train (flattened)
-        X_train_reshaped = X_train.reshape(N * T, F)
-        self._scaler.fit(X_train_reshaped)
-        
-        # Transform Train
-        X_train = self._scaler.transform(X_train_reshaped).reshape(N, T, F)
-        
+        self._scaler.reset()
+
+        # Fit and Transform Train
+        X_train = self._scaler.fit_transform(X_train)
+
         # Transform Val
         if X_val.shape[0] > 0:
-            N_val, T_val, F_val = X_val.shape
-            X_val = self._scaler.transform(X_val.reshape(N_val * T_val, F_val)).reshape(N_val, T_val, F_val)
-            
+            X_val = self._scaler.transform(X_val)
+
         # Transform Test
         if X_test.shape[0] > 0:
-            N_test, T_test, F_test = X_test.shape
-            X_test = self._scaler.transform(X_test.reshape(N_test * T_test, F_test)).reshape(N_test, T_test, F_test)
+            X_test = self._scaler.transform(X_test)
 
         # Train
         train_params = TrainModelParams(
@@ -145,11 +138,11 @@ class LSTMModel(BaseModel):
 
         # Save Model & Scaler
         model_path = self.save_model(trained_model, config.model_dir)
-        
+
         # Save Scaler
         scaler_name = os.path.basename(model_path).replace(".pt", "_scaler.joblib")
-        self._saving_service.save_scaler(self._scaler, config.model_dir, scaler_name)
-        
+        self._saving_service.save_scaler(self._scaler.scaler, config.model_dir, scaler_name)
+
         logging.info(f"LSTM-MTL training completed successfully. Model saved at: {model_path}")
 
         return model_path, evaluation_results
@@ -222,27 +215,13 @@ class LSTMModel(BaseModel):
         lookback = kwargs.get('lookback', self._config.lookback)
         n_features = kwargs.get('n_features', params.X_train.shape[2])
 
-        # Check if scaler is fitted. If not, fit it on X_train (standalone mode support).
-        try:
-            # Check if mean_ is set, standard way to check if fitted
-            self._scaler.mean_
-            is_fitted = True
-        except AttributeError:
-            is_fitted = False
-            
-        if not is_fitted:
+        if not self._scaler.is_fitted():
             logging.info("Scaler not fitted (Standalone Training). Fitting StandardScaler on training data...")
-            N, T, F = params.X_train.shape
-            X_train_reshaped = params.X_train.reshape(N * T, F)
-            self._scaler.fit(X_train_reshaped)
-            
-            # Transform Train
-            params.X_train = self._scaler.transform(X_train_reshaped).reshape(N, T, F)
-            
+            params.X_train = self._scaler.fit_transform(params.X_train)
+
             # Transform Val if present
             if params.X_val is not None and params.X_val.shape[0] > 0:
-                N_val, T_val, F_val = params.X_val.shape
-                params.X_val = self._scaler.transform(params.X_val.reshape(N_val * T_val, F_val)).reshape(N_val, T_val, F_val)
+                params.X_val = self._scaler.transform(params.X_val)
 
         lstm_config = LSTMConfig(
             lookback=lookback,
@@ -261,7 +240,7 @@ class LSTMModel(BaseModel):
 
         clf = B3PytorchMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config,
                                 device=self._device)
-        clf.fit(params.X_train, params.y_train, params.yR_train, 
+        clf.fit(params.X_train, params.y_train, params.yR_train,
                 X_val=params.X_val, y_val=params.y_val, yR_val=params.yR_val)
 
         logging.info("LSTM multi-task training completed")
@@ -273,21 +252,7 @@ class LSTMModel(BaseModel):
 
     def _scale_input(self, X: np.ndarray) -> np.ndarray:
         """Helper to scale 3D input sequences."""
-        if self._scaler is None:
-            logging.warning("No scaler found, using raw input")
-            return X
-            
-        # Check if scaler is fitted
-        try:
-            self._scaler.mean_
-        except AttributeError:
-            logging.warning("Scaler initialized but not fitted, using raw input")
-            return X
-
-        N, T, F = X.shape
-        # Ensure we don't modify the input in place if it's being used elsewhere
-        X_scaled = self._scaler.transform(X.reshape(N * T, F)).reshape(N, T, F)
-        return X_scaled
+        return self._scaler.transform(X)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
@@ -332,43 +297,16 @@ class LSTMModel(BaseModel):
         return self.model.predict_return(X_scaled)
 
     def save_model(self, model: B3PytorchMTLModel, model_dir: str) -> str:
-        """
-        Save LSTM model to storage.
-        
-        Args:
-            model: Trained B3PytorchMTLModel
-            model_dir: Directory to save the model
-            
-        Returns:
-            Path to saved model
-        """
         return self._saving_service.save_model(model.model, model_dir)
 
     def load_model(self, model_path: str) -> B3PytorchMTLModel:
-        """
-        Load LSTM model from storage.
-        
-        Args:
-            model_path: Path to saved model
-            
-        Returns:
-            Loaded B3PytorchMTLModel
-        """
         model = self._model_loader.load_model(model_path)
         self.model = model
         self.is_trained = True
-        
-        # Load Scaler
-        try:
-            scaler_path = model_path.replace(".pt", "_scaler.joblib")
-            if self._storage_service.file_exists(scaler_path):
-                self._scaler = self._saving_service.load_scaler(scaler_path)
-                logging.info(f"Loaded scaler from {scaler_path}")
-            else:
-                logging.warning(f"Scaler file not found at {scaler_path}")
-        except Exception as e:
-            logging.warning(f"Could not load scaler from {scaler_path}: {e}")
-            
+        sklearn_scaler = self._saving_service.load_scaler()
+        self._scaler = LSTMScaler(sklearn_scaler)
+        logging.info(f"Loaded scaler from {self._saving_service.LSTM_SCALER_FILE}")
+
         return model
 
     def evaluate_model(self, model: B3PytorchMTLModel, X_val: np.ndarray, yA_val: pd.Series,
@@ -384,7 +322,7 @@ class LSTMModel(BaseModel):
 
         # Enrich dataframe with predictions for visualization
         df_viz = df_processed.copy()
-        self._prediction_enricher.enrich_df_with_predictions(df_viz, model, max_samples=100, scaler=self._scaler)
+        self._prediction_enricher.enrich_df_with_predictions(df_viz, model, max_samples=100, scaler=self._scaler.scaler)
 
         # Evaluate classification
         classification_results = self._evaluation_service.evaluate_model_comprehensive(

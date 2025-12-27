@@ -10,6 +10,7 @@ from typing import Optional
 from sklearn.metrics import f1_score
 
 from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
+from b3.service.pipeline.model.utils import get_device_str
 
 LABELS = ["buy", "sell", "hold"]
 LABEL_TO_ID = {label: idx for idx, label in enumerate(LABELS)}
@@ -72,7 +73,7 @@ class B3PytorchMTLModel:
         self.config = config or LSTMConfig()
         self.input_timesteps = input_timesteps
         self.input_features = input_features
-        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or torch.device(get_device_str())
         self.model = LSTMNet(input_features, self.config.units, self.config.dropout).to(self.device)
         self.history = {
             'loss': [],

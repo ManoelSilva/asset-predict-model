@@ -12,7 +12,7 @@ class BasePersistService(ABC):
     """
 
     # Subclasses must define their own DEFAULT_MODEL_NAME
-    DEFAULT_MODEL_NAME: str = None
+    LSTM_MODEL_FILE: str = None
 
     def __init__(self, storage_service: DataStorageService = None):
         """
@@ -62,7 +62,7 @@ class BasePersistService(ABC):
         Returns:
             bool: True if model exists, False otherwise
         """
-        model_name = model_name or self.DEFAULT_MODEL_NAME
+        model_name = model_name or self.LSTM_MODEL_FILE
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
         return self._storage_service.file_exists(model_path)
 
@@ -77,7 +77,7 @@ class BasePersistService(ABC):
         Returns:
             str: Full path/URL to the model file
         """
-        model_name = model_name or self.DEFAULT_MODEL_NAME
+        model_name = model_name or self.LSTM_MODEL_FILE
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
         return self._storage_service.get_file_url(model_path)
 
@@ -92,6 +92,6 @@ class BasePersistService(ABC):
         Returns:
             str: Relative path to the model file for storage operations
         """
-        model_name = model_name or self.DEFAULT_MODEL_NAME
+        model_name = model_name or self.LSTM_MODEL_FILE
         return os.path.join(model_dir, model_name).replace('\\', '/')
 

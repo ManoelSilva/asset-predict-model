@@ -5,6 +5,7 @@ from io import BytesIO
 import joblib
 import torch
 from asset_model_data_storage.data_storage_service import DataStorageService
+from sklearn.preprocessing import StandardScaler
 
 from b3.service.pipeline.persist.base_persist_service import BasePersistService
 
@@ -14,8 +15,8 @@ class LSTMPersistService(BasePersistService):
     Service responsible for saving and loading trained LSTM models (PyTorch) and scalers.
     """
 
-    DEFAULT_MODEL_NAME = "b3_lstm_mtl.pt"
-    DEFAULT_SCALER_NAME = "b3_lstm_scaler.joblib"
+    LSTM_MODEL_FILE: str = "b3_lstm_mtl.pt"
+    LSTM_SCALER_FILE: str = "b3_lstm_scaler.joblib"
 
     def __init__(self, storage_service: DataStorageService = None):
         """
@@ -38,7 +39,7 @@ class LSTMPersistService(BasePersistService):
         Returns:
             str: Path/URL to the saved model file
         """
-        model_name = model_name or self.DEFAULT_MODEL_NAME
+        model_name = model_name or self.LSTM_MODEL_FILE
         logging.info(f"Saving PyTorch model to {model_dir}...")
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
 
@@ -72,10 +73,10 @@ class LSTMPersistService(BasePersistService):
     def load_model(self, model_path: str):
         """
         Load a saved PyTorch model checkpoint from storage.
-        
+
         Args:
             model_path: Path to the saved model file
-            
+
         Returns:
             dict: Checkpoint dictionary containing state_dict and config
         """
@@ -108,16 +109,16 @@ class LSTMPersistService(BasePersistService):
     def save_scaler(self, scaler, model_dir: str = "models", scaler_name: str = None) -> str:
         """
         Save a fitted scaler using joblib.
-        
+
         Args:
             scaler: Fitted scaler (StandardScaler, etc.)
             model_dir: Directory to save the scaler
             scaler_name: Name of the scaler file
-            
+
         Returns:
             str: Path to saved scaler
         """
-        scaler_name = scaler_name or self.DEFAULT_SCALER_NAME
+        scaler_name = scaler_name or self.LSTM_SCALER_FILE
         logging.info(f"Saving scaler to {model_dir}...")
         scaler_path = os.path.join(model_dir, scaler_name).replace('\\', '/')
 
@@ -144,21 +145,18 @@ class LSTMPersistService(BasePersistService):
                 except Exception as e:
                     logging.warning(f"Failed to remove temp file {tmp_path}: {e}")
 
-    def load_scaler(self, scaler_path: str):
+    def load_scaler(self) -> StandardScaler:
         """
         Load a saved scaler from storage.
-        
-        Args:
-            scaler_path: Path to the saved scaler file
-            
-        Returns:
-            object: Loaded scaler
-        """
-        logging.info(f"Loading scaler from {scaler_path}...")
-        if not self._storage_service.file_exists(scaler_path):
-            raise FileNotFoundError(f"Scaler file not found: {scaler_path}")
 
-        data = self._storage_service.load_file(scaler_path)
+        Returns:
+            StandardScaler: Loaded scaler
+        """
+        logging.info(f"Loading scaler from {self.LSTM_SCALER_FILE}...")
+        if not self._storage_service.file_exists(self.LSTM_SCALER_FILE):
+            raise FileNotFoundError(f"Scaler file not found: {self.LSTM_SCALER_FILE}")
+
+        data = self._storage_service.load_file(self.LSTM_SCALER_FILE)
 
         # Create a temp file
         fd, tmp_path = tempfile.mkstemp(suffix=".joblib")

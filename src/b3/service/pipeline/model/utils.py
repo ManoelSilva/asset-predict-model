@@ -170,3 +170,9 @@ def get_feature_columns(df: pd.DataFrame) -> List[str]:
         logging.warning(f"No valid features found for enrichment. Expected some of: {FEATURE_SET}")
 
     return feature_cols
+
+
+def get_device_str() -> str:
+    import os
+    import torch
+    return "cuda" if torch.cuda.is_available() and os.environ.get('cuda_enabled', False) else "cpu"
