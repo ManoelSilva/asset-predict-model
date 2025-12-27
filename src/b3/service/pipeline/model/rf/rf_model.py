@@ -8,6 +8,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV, train_test_split
 
 from b3.service.pipeline.model.model import BaseModel
+from b3.service.pipeline.model.params import SplitDataParams, TrainModelParams, PrepareDataParams
 from b3.service.pipeline.model.rf.rf_config import RandomForestConfig
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.rf_persist_service import RandomForestPersistService
@@ -40,15 +41,24 @@ class RandomForestModel(BaseModel):
         logging.info("Starting Random Forest training pipeline")
 
         # 1. Prepare
-        X_prepared, y_prepared = self.prepare_data(X, y)
+        prepare_params = PrepareDataParams(X=X, y=y)
+        X_prepared, y_prepared = self.prepare_data(prepare_params)
 
         # 2. Split
-        X_train, X_val, X_test, y_train, y_val, y_test = self.split_data(
-            X_prepared, y_prepared, config.test_size, config.val_size
+        split_params = SplitDataParams(
+            X=X_prepared,
+            y=y_prepared,
+            test_size=config.test_size,
+            val_size=config.val_size
         )
+        X_train, X_val, X_test, y_train, y_val, y_test = self.split_data(split_params)
 
         # 3. Train
-        trained_model = self.train_model(X_train, y_train, n_jobs=config.n_jobs)
+        train_params = TrainModelParams(
+            X_train=X_train,
+            y_train=y_train
+        )
+        trained_model = self.train_model(train_params, n_jobs=config.n_jobs)
 
         # 4. Evaluate
         evaluation_results = self.evaluate_model(
@@ -61,25 +71,24 @@ class RandomForestModel(BaseModel):
 
         return model_path, evaluation_results
 
-    def prepare_data(self, X: pd.DataFrame, y: pd.Series, **kwargs) -> Tuple[pd.DataFrame, pd.Series]:
+    def prepare_data(self, params: PrepareDataParams, **kwargs) -> Tuple[pd.DataFrame, pd.Series]:
         """
         Prepare data for Random Forest training.
         For RF, data preparation is minimal - just ensure proper format.
         
         Args:
-            X: Feature data
-            y: Target labels
+            params: PrepareDataParams object containing all parameters for data preparation
             **kwargs: Additional parameters (not used for RF)
             
         Returns:
             Tuple of prepared X and y data
         """
-        if not self.validate_data(X, y):
+        if not self.validate_data(params.X, params.y):
             raise ValueError("Invalid input data for Random Forest")
 
         # Ensure proper data types
-        X_prepared = X.copy()
-        y_prepared = y.copy()
+        X_prepared = params.X.copy()
+        y_prepared = params.y.copy()
 
         # Convert any non-numeric columns to numeric if possible
         for col in X_prepared.columns:
@@ -97,40 +106,36 @@ class RandomForestModel(BaseModel):
         logging.info(f"Prepared data for Random Forest: {X_prepared.shape[0]} samples, {X_prepared.shape[1]} features")
         return X_prepared, y_prepared
 
-    def split_data(self, X: pd.DataFrame, y: pd.Series, test_size: float = 0.2, val_size: float = 0.2) -> Tuple[
+    def split_data(self, params: SplitDataParams) -> Tuple[
         pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series]:
         """
         Split data into train/validation/test sets for Random Forest.
         
         Args:
-            X: Feature data
-            y: Target labels
-            test_size: Proportion of data for testing
-            val_size: Proportion of training data for validation
+            params: SplitDataParams object containing all parameters for data splitting
             
         Returns:
             Tuple containing (X_train, X_val, X_test, y_train, y_val, y_test)
         """
         # First split: separate test set
         X_train, X_temp, y_train, y_temp = train_test_split(
-            X, y, test_size=test_size, random_state=RANDOM_STATE, stratify=y
+            params.X, params.y, test_size=params.test_size, random_state=RANDOM_STATE, stratify=params.y
         )
 
         # Second split: separate validation set from remaining data
         X_val, X_test, y_val, y_test = train_test_split(
-            X_temp, y_temp, test_size=val_size, random_state=RANDOM_STATE, stratify=y_temp
+            X_temp, y_temp, test_size=params.val_size, random_state=RANDOM_STATE, stratify=y_temp
         )
 
         logging.info(f"Data split - Train: {len(X_train)}, Validation: {len(X_val)}, Test: {len(X_test)}")
         return X_train, X_val, X_test, y_train, y_val, y_test
 
-    def train_model(self, X_train: pd.DataFrame, y_train: pd.Series, **kwargs) -> RandomForestClassifier:
+    def train_model(self, params: TrainModelParams, **kwargs) -> RandomForestClassifier:
         """
         Train Random Forest pipeline.
         
         Args:
-            X_train: Training features
-            y_train: Training targets
+            params: TrainModelParams object containing all parameters for model training
             **kwargs: Additional training parameters
             
         Returns:
@@ -154,7 +159,7 @@ class RandomForestModel(BaseModel):
             n_jobs=n_jobs, verbose=1, random_state=RANDOM_STATE
         )
 
-        random_search.fit(X_train, y_train)
+        random_search.fit(params.X_train, params.y_train)
         logging.info(f"Hyperparameter tuning completed. Best params: {random_search.best_params_}")
 
         model = cast(RandomForestClassifier, random_search.best_estimator_)
@@ -201,7 +206,8 @@ class RandomForestModel(BaseModel):
             y_sub = sub_df['target'] if 'target' in sub_df.columns else pd.Series(index=sub_df.index)
 
             # Prepare data
-            X_prep, _ = self.prepare_data(X_sub, y_sub)
+            prepare_params = PrepareDataParams(X=X_sub, y=y_sub)
+            X_prep, _ = self.prepare_data(prepare_params)
 
             if X_prep.empty:
                 return

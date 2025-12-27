@@ -5,6 +5,7 @@ from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
 from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.pipeline.model.params import SplitDataParams, PrepareDataParams
 from b3.service.pipeline.model.utils import is_lstm_model
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.utils.api_handler_utils import ApiHandlerUtils
@@ -123,8 +124,13 @@ class ModelEvaluationHandler:
                     horizon = getattr(model.config, 'horizon', 1)
                     price_col = getattr(model.config, 'price_col', 'close')
 
+                    prepare_params = PrepareDataParams(
+                        X=X_full,
+                        y=y_full,
+                        df_processed=df_processed
+                    )
                     X_seq, yA_seq, yR_seq, p0_seq, pf_seq = model_wrapper.prepare_data(
-                        X_full, y_full, df_processed,
+                        prepare_params,
                         lookback=lookback, horizon=horizon, price_col=price_col
                     )
 
@@ -135,13 +141,22 @@ class ModelEvaluationHandler:
                     test_size = 0.2  # DEFAULT_TEST_SIZE
                     val_size = 0.2  # DEFAULT_VAL_SIZE
 
+                    # Create parameter object for split_data
+                    split_params = SplitDataParams(
+                        X=X_seq,
+                        y=yA_seq,
+                        test_size=test_size,
+                        val_size=val_size,
+                        yR=yR_seq,
+                        p0=p0_seq,
+                        pf=pf_seq
+                    )
+                    
                     (X_train_seq, X_val_seq, X_test_seq,
                      yA_train_seq, yA_val_seq, yA_test_seq,
                      yR_train_seq, yR_val_seq, yR_test_seq,
                      p0_train_seq, p0_val_seq, p0_test_seq,
-                     pf_train_seq, pf_val_seq, pf_test_seq) = model_wrapper.split_data(
-                        X_seq, yA_seq, yR_seq, p0_seq, pf_seq, test_size, val_size
-                    )
+                     pf_train_seq, pf_val_seq, pf_test_seq) = model_wrapper.split_data(split_params)
 
                     # 5. Evaluate using the wrapper's method
                     results = model_wrapper.evaluate_model(

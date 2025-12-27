@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from b3.service.pipeline.model.config import ModelConfig
+from b3.service.pipeline.model.params import SplitDataParams, TrainModelParams, PrepareDataParams
 
 
 class BaseModel(ABC):
@@ -43,13 +44,12 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
-    def prepare_data(self, X: pd.DataFrame, y: pd.Series, **kwargs) -> Tuple[Any, Any]:
+    def prepare_data(self, params: PrepareDataParams, **kwargs) -> Tuple[Any, Any]:
         """
         Prepare data for training/prediction based on model requirements.
         
         Args:
-            X: Feature data
-            y: Target labels
+            params: PrepareDataParams object containing all parameters for data preparation
             **kwargs: Additional parameters specific to model type
             
         Returns:
@@ -58,15 +58,12 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
-    def split_data(self, X: Any, y: Any, test_size: float = 0.2, val_size: float = 0.2) -> Tuple[Any, ...]:
+    def split_data(self, params: SplitDataParams) -> Tuple[Any, ...]:
         """
         Split data into train/validation/test sets.
         
         Args:
-            X: Feature data
-            y: Target labels
-            test_size: Proportion of data for testing
-            val_size: Proportion of training data for validation
+            params: SplitDataParams object containing all parameters for data splitting
             
         Returns:
             Tuple containing train/val/test splits
@@ -74,13 +71,12 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
-    def train_model(self, X_train: Any, y_train: Any, **kwargs) -> Any:
+    def train_model(self, params: TrainModelParams, **kwargs) -> Any:
         """
         Train the model on provided data.
         
         Args:
-            X_train: Training features
-            y_train: Training targets
+            params: TrainModelParams object containing all parameters for model training
             **kwargs: Additional training parameters
             
         Returns:

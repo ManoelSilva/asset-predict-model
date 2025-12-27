@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 from b3.service.pipeline.model.lstm.pytorch_mtl_model import B3PytorchMTLModel
 from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
 from b3.service.pipeline.model.model import BaseModel
+from b3.service.pipeline.model.params import SplitDataParams, TrainModelParams, PrepareDataParams
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.lstm_persist_service import LSTMPersistService
 from constants import RANDOM_STATE, FEATURE_SET
@@ -64,23 +65,40 @@ class LSTMModel(BaseModel):
 
         # 1. Prepare
         lstm_config_dict = config.get_lstm_config_dict()
+        prepare_params = PrepareDataParams(
+            X=X,
+            y=y,
+            df_processed=df_processed
+        )
         X_seq, yA_seq, yR_seq, p0_seq, pf_seq = self.prepare_data(
-            X, y, df_processed, **lstm_config_dict
+            prepare_params, **lstm_config_dict
         )
 
         # 2. Split
+        split_params = SplitDataParams(
+            X=X_seq,
+            y=yA_seq,
+            test_size=config.test_size,
+            val_size=config.val_size,
+            yR=yR_seq,
+            p0=p0_seq,
+            pf=pf_seq
+        )
         (X_train, X_val, X_test,
          yA_train, yA_val, yA_test,
          yR_train, yR_val, yR_test,
          p0_train, p0_val, p0_test,
-         pf_train, pf_val, pf_test) = self.split_data(
-            X_seq, yA_seq, yR_seq, p0_seq, pf_seq, config.test_size, config.val_size
-        )
+         pf_train, pf_val, pf_test) = self.split_data(split_params)
 
         # 3. Train
         # Note: using X.shape[1] for n_features which is the number of features in the raw dataframe
+        train_params = TrainModelParams(
+            X_train=X_train,
+            y_train=yA_train,
+            yR_train=yR_train
+        )
         trained_model = self.train_model(
-            X_train, yA_train, yR_train, lookback=config.lookback, n_features=X.shape[1]
+            train_params, lookback=config.lookback, n_features=X.shape[1]
         )
 
         # 4. Evaluate
@@ -99,24 +117,22 @@ class LSTMModel(BaseModel):
 
         return model_path, evaluation_results
 
-    def prepare_data(self, X: pd.DataFrame, y: pd.Series, df_processed: pd.DataFrame = None, **kwargs) -> Tuple[
+    def prepare_data(self, params: PrepareDataParams, **kwargs) -> Tuple[
         np.ndarray, pd.Series, np.ndarray, np.ndarray, np.ndarray]:
         """
         Prepare data for LSTM training by building sequences.
         
         Args:
-            X: Feature data
-            y: Target labels
-            df_processed: Full processed dataframe (required for LSTM)
+            params: PrepareDataParams object containing all parameters for data preparation
             **kwargs: Additional parameters
             
         Returns:
             Tuple containing (X_seq, y_action_seq, y_return_seq, last_price_seq, future_price_seq)
         """
-        if not self.validate_data(X, y):
+        if not self.validate_data(params.X, params.y):
             raise ValueError("Invalid input data for LSTM")
 
-        if df_processed is None:
+        if not params.has_lstm_params() or params.df_processed is None:
             raise ValueError("df_processed is required for LSTM sequence building")
 
         lookback = kwargs.get('lookback', self._config.lookback)
@@ -126,7 +142,7 @@ class LSTMModel(BaseModel):
         logging.info(f"Building LSTM sequences with lookback={lookback}, horizon={horizon}")
 
         X_seq, yA_seq, yR_seq, p0_seq, pf_seq = self._build_sequences(
-            X, y, df_processed, price_col=price_col, lookback=lookback, horizon=horizon
+            params.X, params.y, params.df_processed, price_col=price_col, lookback=lookback, horizon=horizon
         )
 
         if len(X_seq) == 0:
@@ -135,44 +151,39 @@ class LSTMModel(BaseModel):
         logging.info(f"Built {len(X_seq)} sequences for LSTM training")
         return X_seq, yA_seq, yR_seq, p0_seq, pf_seq
 
-    def split_data(self, X_seq: np.ndarray, yA_seq: pd.Series, yR_seq: np.ndarray,
-                   p0_seq: np.ndarray, pf_seq: np.ndarray, test_size: float = 0.2, val_size: float = 0.2) -> Tuple[
-        np.ndarray, ...]:
+    def split_data(self, params: SplitDataParams) -> Tuple[np.ndarray, ...]:
         """
         Split LSTM sequences into train/validation/test sets.
         
         Args:
-            X_seq: Feature sequences
-            yA_seq: Action target sequences
-            yR_seq: Return target sequences
-            p0_seq: Initial price sequences
-            pf_seq: Future price sequences
-            test_size: Proportion of data for testing
-            val_size: Proportion of training data for validation
+            params: SplitDataParams object containing all parameters for data splitting
             
         Returns:
             Tuple containing all train/val/test splits
         """
+        if not params.has_lstm_params():
+            raise ValueError("LSTM split_data requires LSTM-specific parameters (yR, p0, pf)")
+
         return self._split_sequences(
-            X_seq, yA_seq, yR_seq, p0_seq, pf_seq, test_size, val_size
+            params.X, params.y, params.yR, params.p0, params.pf, params.test_size, params.val_size
         )
 
-    def train_model(self, X_train: np.ndarray, yA_train: pd.Series, yR_train: np.ndarray,
-                    **kwargs) -> B3PytorchMTLModel:
+    def train_model(self, params: TrainModelParams, **kwargs) -> B3PytorchMTLModel:
         """
         Train LSTM Multi-Task Learning model.
         
         Args:
-            X_train: Training feature sequences
-            yA_train: Training action targets
-            yR_train: Training return targets
+            params: TrainModelParams object containing all parameters for model training
             **kwargs: Additional training parameters
             
         Returns:
             Trained B3PytorchMTLModel
         """
+        if not params.has_lstm_params():
+            raise ValueError("LSTM train_model requires LSTM-specific parameters (yR_train)")
+
         lookback = kwargs.get('lookback', self._config.lookback)
-        n_features = kwargs.get('n_features', X_train.shape[2])
+        n_features = kwargs.get('n_features', params.X_train.shape[2])
 
         lstm_config = LSTMConfig(
             lookback=lookback,
@@ -191,7 +202,7 @@ class LSTMModel(BaseModel):
 
         clf = B3PytorchMTLModel(input_timesteps=lookback, input_features=n_features, config=lstm_config,
                                 device=self._device)
-        clf.fit(X_train, yA_train, yR_train)
+        clf.fit(params.X_train, params.y_train, params.yR_train)
 
         logging.info("LSTM multi-task training completed")
 
@@ -329,7 +340,7 @@ class LSTMModel(BaseModel):
         df_viz = df_processed.copy()
         # Generate predictions for a larger pool of tickers (e.g. 20) to ensure the plotter
         # can find diverse examples (Buy/Sell/Hold).
-        self._enrich_df_with_predictions(df_viz, max_samples=20)
+        self._enrich_df_with_predictions(df_viz, max_samples=100)
 
         # Evaluate classification
         classification_results = self._evaluation_service.evaluate_model_comprehensive(

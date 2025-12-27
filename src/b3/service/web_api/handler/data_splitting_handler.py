@@ -4,6 +4,7 @@ import pandas as pd
 from flask import request, jsonify
 
 from b3.service.pipeline.model.factory import ModelFactory
+from b3.service.pipeline.model.params import SplitDataParams
 from b3.service.pipeline.model.utils import normalize_model_type
 from constants import HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_TEST_SIZE, DEFAULT_VAL_SIZE
 
@@ -37,10 +38,16 @@ class DataSplittingHandler:
             # Get model instance using factory
             model = ModelFactory.get_model(model_type)
 
-            # Use model's split_data method
-            x_train, x_val, x_test, y_train, y_val, y_test = model.split_data(
-                x, y, test_size, val_size
+            # Create parameter object for split_data
+            split_params = SplitDataParams(
+                X=x,
+                y=y,
+                test_size=test_size,
+                val_size=val_size
             )
+            
+            # Use model's split_data method
+            x_train, x_val, x_test, y_train, y_val, y_test = model.split_data(split_params)
             self._pipeline_state['X_train'] = x_train.to_dict('records')
             self._pipeline_state['X_val'] = x_val.to_dict('records')
             self._pipeline_state['X_test'] = x_test.to_dict('records')

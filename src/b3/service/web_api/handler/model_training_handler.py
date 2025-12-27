@@ -7,6 +7,7 @@ from asset_model_data_storage.data_storage_service import DataStorageService
 from flask import request, jsonify
 
 from b3.service.pipeline.model.training_config import TrainingConfig
+from b3.service.pipeline.model.params import TrainModelParams, PrepareDataParams
 from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model, normalize_model_type, create_model_from_config
 from b3.utils.api_handler_utils import ApiHandlerUtils
 from constants import HTTP_STATUS_INTERNAL_SERVER_ERROR, DEFAULT_N_JOBS, MODEL_STORAGE_KEY
@@ -97,10 +98,15 @@ class ModelTrainingHandler:
 
                 # Prepare data if needed
                 if hasattr(model, 'prepare_data'):
-                    x_train, y_train = model.prepare_data(x_train, y_train)
+                    prepare_params = PrepareDataParams(X=x_train, y=y_train)
+                    x_train, y_train = model.prepare_data(prepare_params)
 
                 # Train model
-                trained_model = model.train_model(x_train, y_train, n_jobs=config.n_jobs)
+                train_params = TrainModelParams(
+                    X_train=x_train,
+                    y_train=y_train
+                )
+                trained_model = model.train_model(train_params, n_jobs=config.n_jobs)
                 train_size = len(x_train)
 
             elif is_lstm_model(config.model_type):
@@ -131,12 +137,20 @@ class ModelTrainingHandler:
                         raise ValueError("For LSTM models, processed_data must be available in pipeline_state")
 
                     # Prepare sequences
-                    x_train, yA_train, yR_train, _, _ = model.prepare_data(
-                        x_train, y_train, df_processed
+                    prepare_params = PrepareDataParams(
+                        X=x_train,
+                        y=y_train,
+                        df_processed=df_processed
                     )
+                    x_train, yA_train, yR_train, _, _ = model.prepare_data(prepare_params)
 
                 # Train model
-                trained_model = model.train_model(x_train, yA_train, yR_train, lookback=model.config.lookback,
+                train_params = TrainModelParams(
+                    X_train=x_train,
+                    y_train=yA_train,
+                    yR_train=yR_train
+                )
+                trained_model = model.train_model(train_params, lookback=model.config.lookback,
                                                   n_features=x_train.shape[2])
                 train_size = len(x_train)
 
