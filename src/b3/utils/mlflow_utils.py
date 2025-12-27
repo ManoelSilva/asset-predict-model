@@ -1,4 +1,5 @@
 from datetime import datetime
+from dataclasses import fields
 
 import mlflow
 from b3.service.pipeline.model.training_config import TrainingConfig
@@ -7,20 +8,51 @@ from b3.service.pipeline.model.utils import is_rf_model, is_lstm_model
 
 class MlFlowUtils:
     @staticmethod
+    def _format_config_value(value) -> str:
+        """
+        Format a configuration value for use in experiment name.
+        
+        Args:
+            value: Configuration value (str, int, float, etc.)
+            
+        Returns:
+            Formatted string value safe for experiment names
+        """
+        if isinstance(value, float):
+            # Convert float to string with fixed precision, remove trailing zeros
+            # Replace dots with underscores for filesystem compatibility
+            str_value = f"{value:.10f}".rstrip('0').rstrip('.')
+            return str_value.replace('.', '_')
+        return str(value)
+
+    @staticmethod
     def get_experiment_name(config: TrainingConfig) -> str:
         """
         Generate a deterministic experiment name based on the configuration.
-
-        Pattern:
-        RF:   RF_{asset}_h{horizon}_v{feature_set_version}
-        LSTM: LSTM_{asset}_h{horizon}_lb{lookback}_u{units}_ep{epochs}
         """
-        if is_rf_model(config.model_type):
-            return f"RF_{config.asset}_h{config.horizon}_v{config.feature_set_version}"
-        elif is_lstm_model(config.model_type):
-            return f"LSTM_{config.asset}_h{config.horizon}_lb{config.lookback}_u{config.units}_ep{config.epochs}"
+        config_fields = fields(config)
 
-        return f"Unknown_{config.model_type}_{config.asset}"
+        # Build experiment name
+        name_parts = []
+        for field in config_fields:
+            field_name = field.name
+            if field_name == 'model_dir':
+                continue
+            field_value = getattr(config, field_name)
+            formatted_value = MlFlowUtils._format_config_value(field_value)
+            name_parts.append(f"{field_name}_{formatted_value}")
+
+        return "_".join(name_parts)
+
+    @staticmethod
+    def get_run_name(config: TrainingConfig) -> str:
+        """
+        Generate a deterministic run name based on the configuration.
+        
+        Returns:
+            Run name string with all config values
+        """
+        return MlFlowUtils.get_experiment_name(config)
 
     @staticmethod
     def start_run(config: TrainingConfig):
@@ -30,7 +62,8 @@ class MlFlowUtils:
         active_run = mlflow.active_run()
 
         if active_run is None:
-            mlflow.start_run()
+            run_name = MlFlowUtils.get_run_name(config)
+            mlflow.start_run(run_name=run_name)
             MlFlowUtils.log_param("train_start_date", datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3])
             MlFlowUtils.log_config_params(config)
 
