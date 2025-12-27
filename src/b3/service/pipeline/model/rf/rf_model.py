@@ -10,9 +10,10 @@ from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV, train_t
 from b3.service.pipeline.model.model import BaseModel
 from b3.service.pipeline.model.params import SplitDataParams, TrainModelParams, PrepareDataParams
 from b3.service.pipeline.model.rf.rf_config import RandomForestConfig
+from b3.service.pipeline.model.utils import prepare_enrichment_dataframe, get_feature_columns
 from b3.service.pipeline.model_evaluation_service import B3ModelEvaluationService
 from b3.service.pipeline.persist.rf_persist_service import RandomForestPersistService
-from constants import RANDOM_STATE, FEATURE_SET
+from constants import RANDOM_STATE
 
 
 class RandomForestModel(BaseModel):
@@ -176,30 +177,16 @@ class RandomForestModel(BaseModel):
         Operates in-place.
         Optimized to batch predictions.
         """
-        if df is None or df.empty or 'ticker' not in df.columns:
+        result = prepare_enrichment_dataframe(df, max_samples=max_samples)
+        df, sample_tickers, sub_df = result
+
+        if df is None or sub_df is None:
             return
-
-        all_tickers = df['ticker'].unique()
-        sample_tickers = all_tickers[:max_samples]
-
-        logging.info(f"Generating RF predictions for visualization tickers: {sample_tickers}")
-
-        # Initialize columns
-        df['predicted_action'] = None
-
-        # Filter for all sample tickers
-        mask = df['ticker'].isin(sample_tickers)
-        if not mask.any():
-            return
-
-        sub_df = df[mask].copy()
 
         try:
-            # Identify feature columns using strict FEATURE_SET
-            feature_cols = [c for c in FEATURE_SET if c in sub_df.columns]
+            feature_cols = get_feature_columns(sub_df)
 
             if not feature_cols:
-                logging.warning(f"No valid features found for RF enrichment. Expected some of: {FEATURE_SET}")
                 return
 
             X_sub = sub_df[feature_cols]

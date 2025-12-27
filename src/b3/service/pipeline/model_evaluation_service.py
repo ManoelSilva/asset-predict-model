@@ -232,33 +232,3 @@ class B3ModelEvaluationService:
             bool: Success status
         """
         return self._evaluation_data_loader.update_metrics_json(evaluation_id, additional_metrics)
-
-    def get_evaluation_history(self, model_name: str = None) -> DataFrame:
-        """
-        Retrieve evaluation history from the database.
-        
-        Args:
-            model_name: Optional model name to filter by
-            
-        Returns:
-            DataFrame: Evaluation history data
-        """
-        if model_name:
-            return self._evaluation_data_loader.fetch_by_model(model_name)
-        else:
-            return self._evaluation_data_loader.fetch_all()
-
-    def get_evaluation_summary(self) -> DataFrame:
-        """
-        Get summary statistics of all evaluations.
-        
-        Returns:
-            DataFrame: Summary statistics
-        """
-        return self._evaluation_data_loader.get_evaluation_summary()
-
-    def close(self):
-        """Close the evaluation data loader connection."""
-        if hasattr(self, 'evaluation_data_loader') and self._evaluation_data_loader:
-            self._evaluation_data_loader.close()
-            logging.info("Evaluation data loader connection closed")

@@ -57,7 +57,7 @@ class LSTMPersistService(BasePersistService):
                 'dropout': model_net.dropout.p
             }
             torch.save(checkpoint, tmp_path)
-            
+
             with open(tmp_path, "rb") as f:
                 model_bytes = BytesIO(f.read())
 
@@ -91,7 +91,7 @@ class LSTMPersistService(BasePersistService):
         try:
             with open(tmp_path, "wb") as f:
                 f.write(data)
-            
+
             # Load with weights_only=False if needed, but safest default is usually fine for dicts if trusted
             # Using map_location='cpu' to avoid CUDA errors if loading on CPU machine
             checkpoint = torch.load(tmp_path, map_location=torch.device('cpu'))
