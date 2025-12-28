@@ -392,19 +392,3 @@ class LSTMModel(BaseModel):
             'classification': classification_results,
             'regression': regression_results
         }
-
-    def _validate_for_prediction(self, X: np.ndarray) -> None:
-        """
-        Validate model and input data before making predictions.
-        
-        Args:
-            X: Feature sequences for prediction
-            
-        Raises:
-            ValueError: If model is not trained or data is invalid
-        """
-        if not self.is_trained or self.model is None:
-            raise ValueError("Model must be trained before making predictions")
-
-        if not self.validate_data(X):
-            raise ValueError("Invalid input data for prediction")

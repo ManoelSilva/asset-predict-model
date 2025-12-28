@@ -8,6 +8,7 @@ import numpy as np
 from pandas import Series
 from typing import Optional
 from sklearn.metrics import f1_score
+from sklearn.utils.class_weight import compute_class_weight
 
 from b3.service.pipeline.model.lstm.lstm_config import LSTMConfig
 from b3.service.pipeline.model.utils import get_device_str
@@ -21,6 +22,9 @@ class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2.0, reduction='mean'):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
+        # Convert alpha to tensor if provided as list/array
+        if alpha is not None and not isinstance(alpha, torch.Tensor):
+            alpha = torch.tensor(alpha, dtype=torch.float32)
         self.alpha = alpha
         self.reduction = reduction
 
@@ -79,8 +83,12 @@ class B3PytorchMTLModel:
             'loss': [],
             'val_loss': [],
             'val_f1': [],
-            'val_mae': []
+            'val_mae': [],
+            'learning_rate': []
         }
+        self.best_val_loss = float('inf')
+        self.best_model_state = None
+        self.early_stopping_counter = None
 
     @staticmethod
     def _prepare_tensors(X, y_action, y_return):
@@ -116,8 +124,12 @@ class B3PytorchMTLModel:
             'loss': [],
             'val_loss': [],
             'val_f1': [],
-            'val_mae': []
+            'val_mae': [],
+            'learning_rate': []
         }
+        self.best_val_loss = float('inf')
+        self.best_model_state = None
+        self.early_stopping_counter = 0
 
         X_train_t, y_train_t, yR_train_t = self._prepare_tensors(X, y_action, y_return)
 
@@ -151,10 +163,20 @@ class B3PytorchMTLModel:
         # Handle zero counts safely
         class_counts = np.maximum(class_counts, 1)
 
-        # Calculate weights: inverse frequency (1/N)
-        class_weights = 1.0 / class_counts
+        # Use sklearn's balanced class weight calculation
+        # This computes weights inversely proportional to class frequencies
+        # n_samples / (n_classes * np.bincount(y))
+        unique_classes = np.arange(len(LABELS))
+        class_weights = compute_class_weight(
+            'balanced',
+            classes=unique_classes,
+            y=y_train_np
+        )
 
-        # Assign weight to each sample
+        logging.info(f"Class distribution: {dict(zip(LABELS, class_counts))}")
+        logging.info(f"Class weights (sklearn balanced): {dict(zip(LABELS, class_weights))}")
+
+        # Assign weight to each sample for oversampling
         sample_weights = class_weights[y_train_np]
         sample_weights_tensor = torch.tensor(sample_weights, dtype=torch.float)
 
@@ -170,12 +192,38 @@ class B3PytorchMTLModel:
         val_loader = DataLoader(val_dataset, batch_size=self.config.batch_size, shuffle=False)
 
         # Loss and Optimizer
-        # Using FocalLoss for class imbalance handling on top of sampling
-        criterion_action = FocalLoss(gamma=2.0)
+        # Using FocalLoss with class weights for better imbalance handling
+        if self.config.use_class_weights:
+            # Convert class weights to tensor and move to device
+            class_weights_tensor = torch.tensor(class_weights, dtype=torch.float32).to(self.device)
+            criterion_action = FocalLoss(alpha=class_weights_tensor, gamma=self.config.focal_loss_gamma)
+            logging.info(f"Using FocalLoss with class weights: {class_weights}")
+        else:
+            criterion_action = FocalLoss(gamma=self.config.focal_loss_gamma)
+            logging.info("Using FocalLoss without class weights")
+
         criterion_return = nn.MSELoss()
-        optimizer = optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
+
+        # Optimizer with L2 regularization (weight decay)
+        optimizer = optim.Adam(
+            self.model.parameters(),
+            lr=self.config.learning_rate,
+            weight_decay=self.config.weight_decay
+        )
+
+        # Learning rate scheduler
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=self.config.lr_scheduler_factor,
+            patience=self.config.lr_scheduler_patience,
+            min_lr=self.config.lr_scheduler_min_lr
+        )
 
         logging.info(f"Training on {self.device} with Oversampling & FocalLoss")
+        logging.info(f"Early stopping patience: {self.config.early_stopping_patience}")
+        logging.info(f"Gradient clipping norm: {self.config.gradient_clip_norm}")
+        logging.info(f"L2 regularization (weight_decay): {self.config.weight_decay}")
 
         for epoch in range(self.config.epochs):
             self.model.train()
@@ -197,6 +245,14 @@ class B3PytorchMTLModel:
                        (self.config.loss_weight_return * loss_return)
 
                 loss.backward()
+
+                # Gradient clipping to prevent exploding gradients
+                if self.config.gradient_clip_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(),
+                        max_norm=self.config.gradient_clip_norm
+                    )
+
                 optimizer.step()
 
                 total_loss += loss.item() * batch_X.size(0)
@@ -241,17 +297,46 @@ class B3PytorchMTLModel:
             val_f1 = f1_score(all_targets, all_preds, average='macro')
             avg_val_mae = val_mae / len(val_dataset)
 
+            # Learning rate scheduling
+            current_lr = optimizer.param_groups[0]['lr']
+            scheduler.step(avg_val_loss)
+
             # Store history
             self.history['loss'].append(avg_loss)
             self.history['val_loss'].append(avg_val_loss)
             self.history['val_f1'].append(val_f1)
             self.history['val_mae'].append(avg_val_mae)
+            self.history['learning_rate'].append(current_lr)
+
+            # Early stopping check
+            improvement = self.best_val_loss - avg_val_loss
+            if improvement > self.config.early_stopping_min_delta:
+                self.best_val_loss = avg_val_loss
+                self.best_model_state = self.model.state_dict().copy()
+                self.early_stopping_counter = 0
+                logging.info(f"✓ Best model updated! Val loss: {avg_val_loss:.4f} (improvement: {improvement:.4f})")
+            else:
+                self.early_stopping_counter += 1
 
             logging.info(f"Epoch {epoch + 1}/{self.config.epochs} - "
                          f"loss: {avg_loss:.4f} (Act: {avg_loss_action:.4f}, Ret: {avg_loss_return:.4f}) - "
-                         f"val_loss: {avg_val_loss:.4f} - "
+                         f"val_loss: {avg_val_loss:.4f} (best: {self.best_val_loss:.4f}) - "
                          f"val_f1: {val_f1:.4f} - "
-                         f"val_mae: {avg_val_mae:.4f}")
+                         f"val_mae: {avg_val_mae:.4f} - "
+                         f"lr: {current_lr:.6f} - "
+                         f"patience: {self.early_stopping_counter}/{self.config.early_stopping_patience}")
+
+            # Early stopping
+            if self.early_stopping_counter >= self.config.early_stopping_patience:
+                logging.info(f"Early stopping triggered after {epoch + 1} epochs. "
+                             f"Restoring best model with val_loss: {self.best_val_loss:.4f}")
+                self.model.load_state_dict(self.best_model_state)
+                break
+
+        # If training completed without early stopping, ensure we use the best model
+        if self.best_model_state is not None and self.early_stopping_counter < self.config.early_stopping_patience:
+            logging.info(f"Training completed. Restoring best model with val_loss: {self.best_val_loss:.4f}")
+            self.model.load_state_dict(self.best_model_state)
 
         return self
 
