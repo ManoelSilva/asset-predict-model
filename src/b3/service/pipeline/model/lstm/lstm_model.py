@@ -139,10 +139,6 @@ class LSTMModel(BaseModel):
         # Save Model & Scaler
         model_path = self.save_model(trained_model, config.model_dir)
 
-        # Save Scaler
-        scaler_name = os.path.basename(model_path).replace(".pt", "_scaler.joblib")
-        self._saving_service.save_scaler(self._scaler.scaler, config.model_dir, scaler_name)
-
         logging.info(f"LSTM-MTL training completed successfully. Model saved at: {model_path}")
 
         return model_path, evaluation_results
@@ -297,15 +293,42 @@ class LSTMModel(BaseModel):
         return self.model.predict_return(X_scaled)
 
     def save_model(self, model: B3PytorchMTLModel, model_dir: str) -> str:
-        return self._saving_service.save_model(model.model, model_dir)
+        model_path = self._saving_service.save_model(model.model, model_dir)
+
+        # Save Scaler
+        if self._scaler.is_fitted():
+            model_filename = os.path.basename(model_path)
+            scaler_name = model_filename.replace(".pt", "_scaler.joblib")
+            if scaler_name == model_filename:
+                scaler_name = f"{model_filename}_scaler.joblib"
+
+            self._saving_service.save_scaler(self._scaler.scaler, model_dir, scaler_name)
+            logging.info(f"Saved scaler to {scaler_name}")
+
+        return model_path
 
     def load_model(self, model_path: str) -> B3PytorchMTLModel:
         model = self._model_loader.load_model(model_path)
         self.model = model
         self.is_trained = True
-        sklearn_scaler = self._saving_service.load_scaler()
-        self._scaler = LSTMScaler(sklearn_scaler)
-        logging.info(f"Loaded scaler from {self._saving_service.LSTM_SCALER_FILE}")
+
+        # Derive scaler path from model path to ensure we load the matching scaler
+        model_dir = os.path.dirname(model_path)
+        model_filename = os.path.basename(model_path)
+
+        scaler_name = model_filename.replace(".pt", "_scaler.joblib")
+
+        if scaler_name == model_filename:
+            scaler_name = f"{model_filename}_scaler.joblib"
+
+        try:
+            scaler = self._saving_service.load_scaler(model_dir=model_dir, scaler_name=scaler_name)
+            logging.info(f"Loaded scaler {scaler_name} from {model_dir}")
+        except FileNotFoundError:
+            logging.warning(f"Scaler {scaler_name} not found in {model_dir}, trying default scaler name")
+            scaler = self._saving_service.load_scaler(model_dir=model_dir)
+
+        self._scaler = LSTMScaler(scaler)
 
         return model
 

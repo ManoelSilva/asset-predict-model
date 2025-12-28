@@ -15,7 +15,7 @@ class LSTMPersistService(BasePersistService):
     Service responsible for saving and loading trained LSTM models (PyTorch) and scalers.
     """
 
-    LSTM_MODEL_FILE: str = "b3_lstm_mtl.pt"
+    MODEL_FILE: str = "b3_lstm_mtl.pt"
     LSTM_SCALER_FILE: str = "b3_lstm_scaler.joblib"
 
     def __init__(self, storage_service: DataStorageService = None):
@@ -39,7 +39,7 @@ class LSTMPersistService(BasePersistService):
         Returns:
             str: Path/URL to the saved model file
         """
-        model_name = model_name or self.LSTM_MODEL_FILE
+        model_name = model_name or self.MODEL_FILE
         logging.info(f"Saving PyTorch model to {model_dir}...")
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
 
@@ -145,18 +145,24 @@ class LSTMPersistService(BasePersistService):
                 except Exception as e:
                     logging.warning(f"Failed to remove temp file {tmp_path}: {e}")
 
-    def load_scaler(self) -> StandardScaler:
+    def load_scaler(self, model_dir: str = "models", scaler_name: str = None) -> StandardScaler:
         """
         Load a saved scaler from storage.
+
+        Args:
+            model_dir: Directory where the scaler is located
+            scaler_name: Name of the scaler file
 
         Returns:
             StandardScaler: Loaded scaler
         """
-        logging.info(f"Loading scaler from {self.LSTM_SCALER_FILE}...")
-        if not self._storage_service.file_exists(self.LSTM_SCALER_FILE):
-            raise FileNotFoundError(f"Scaler file not found: {self.LSTM_SCALER_FILE}")
+        scaler_name = scaler_name or self.LSTM_SCALER_FILE
+        file_path = self.get_model_path(model_dir=model_dir, model_name=scaler_name)
+        logging.info(f"Loading scaler from {file_path}...")
+        if not self._storage_service.file_exists(file_path):
+            raise FileNotFoundError(f"Scaler file not found: {file_path}")
 
-        data = self._storage_service.load_file(self.LSTM_SCALER_FILE)
+        data = self._storage_service.load_file(file_path)
 
         # Create a temp file
         fd, tmp_path = tempfile.mkstemp(suffix=".joblib")

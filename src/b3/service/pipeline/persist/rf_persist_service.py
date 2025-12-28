@@ -14,7 +14,7 @@ class RandomForestPersistService(BasePersistService):
     Service responsible for saving and loading trained B3 Random Forest models.
     """
 
-    DEFAULT_MODEL_NAME = "b3_model.joblib"
+    MODEL_FILE = "b3_model.joblib"
 
     def __init__(self, storage_service: DataStorageService = None):
         """
@@ -38,7 +38,7 @@ class RandomForestPersistService(BasePersistService):
         Returns:
             str: Path/URL to the saved model file
         """
-        model_name = model_name or self.DEFAULT_MODEL_NAME
+        model_name = model_name or self.MODEL_FILE
         logging.info(f"Saving model to {model_dir}...")
 
         # Create model path

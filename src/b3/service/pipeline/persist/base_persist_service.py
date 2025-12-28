@@ -11,8 +11,8 @@ class BasePersistService(ABC):
     Provides common functionality for saving and loading models.
     """
 
-    # Subclasses must define their own DEFAULT_MODEL_NAME
-    LSTM_MODEL_FILE: str = None
+    # Subclasses must define their own MODEL_FILE
+    MODEL_FILE: str = None
 
     def __init__(self, storage_service: DataStorageService = None):
         """
@@ -31,7 +31,7 @@ class BasePersistService(ABC):
         Args:
             model: Trained model to save
             model_dir: Directory to save the model
-            model_name: Name of the model file (uses DEFAULT_MODEL_NAME if None)
+            model_name: Name of the model file (uses MODEL_FILE if None)
             
         Returns:
             str: Path/URL to the saved model file
@@ -57,12 +57,12 @@ class BasePersistService(ABC):
         
         Args:
             model_dir: Directory where the model should be
-            model_name: Name of the model file (uses DEFAULT_MODEL_NAME if None)
+            model_name: Name of the model file (uses MODEL_FILE if None)
             
         Returns:
             bool: True if model exists, False otherwise
         """
-        model_name = model_name or self.LSTM_MODEL_FILE
+        model_name = model_name or self.MODEL_FILE
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
         return self._storage_service.file_exists(model_path)
 
@@ -72,12 +72,12 @@ class BasePersistService(ABC):
         
         Args:
             model_dir: Directory where the model is located
-            model_name: Name of the model file (uses DEFAULT_MODEL_NAME if None)
+            model_name: Name of the model file (uses MODEL_FILE if None)
             
         Returns:
             str: Full path/URL to the model file
         """
-        model_name = model_name or self.LSTM_MODEL_FILE
+        model_name = model_name or self.MODEL_FILE
         model_path = os.path.join(model_dir, model_name).replace('\\', '/')
         return self._storage_service.get_file_url(model_path)
 
@@ -87,11 +87,11 @@ class BasePersistService(ABC):
         
         Args:
             model_dir: Directory where the model is located
-            model_name: Name of the model file (uses DEFAULT_MODEL_NAME if None)
+            model_name: Name of the model file (uses MODEL_FILE if None)
             
         Returns:
             str: Relative path to the model file for storage operations
         """
-        model_name = model_name or self.LSTM_MODEL_FILE
+        model_name = model_name or self.MODEL_FILE
         return os.path.join(model_dir, model_name).replace('\\', '/')
 
