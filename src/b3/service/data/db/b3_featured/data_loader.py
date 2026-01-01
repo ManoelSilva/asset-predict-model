@@ -1,13 +1,11 @@
+import datetime
 import logging
 
 import duckdb
 import pandas as pd
-import datetime
 
 
 class B3DataLoader(object):
-    _URL = 'https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D25092025.ZIP'
-
     def __init__(self, db_path="md:b3"):
         """
         Initialize the DuckDB connection.
@@ -25,7 +23,11 @@ class B3DataLoader(object):
             pd.DataFrame: All data.
         """
         logging.info("Fetching all data from b3_featured..")
-        return self.conn.execute(f"SELECT * FROM {self.table_name}").fetchdf()
+        # Join with historical table to bring in raw close price
+        query = f"""
+        SELECT f.* FROM {self.table_name} AS f
+        """
+        return self.conn.execute(query).fetchdf()
 
     def fetch(self, start_date=None, end_date=None, ticker=None):
         """
@@ -39,17 +41,18 @@ class B3DataLoader(object):
         """
         if start_date is None:
             start_date = self._get_default_start_date(ticker)
+        base_select = f"SELECT f.* {self.table_name} AS f"
         if end_date and ticker:
-            query = f"SELECT * FROM {self.table_name} WHERE date >= ? AND date <= ? AND ticker = ?"
+            query = base_select + " WHERE f.date >= ? AND f.date <= ? AND f.ticker = ?"
             params = (start_date, end_date, ticker)
         elif end_date:
-            query = f"SELECT * FROM {self.table_name} WHERE date >= ? AND date <= ?"
+            query = base_select + " WHERE f.date >= ? AND f.date <= ?"
             params = (start_date, end_date)
         elif ticker:
-            query = f"SELECT * FROM {self.table_name} WHERE date = ? AND ticker = ?"
+            query = base_select + " WHERE f.date = ? AND f.ticker = ?"
             params = (start_date, ticker)
         else:
-            query = f"SELECT * FROM {self.table_name} WHERE date = ?"
+            query = base_select + " WHERE f.date = ?"
             params = (start_date,)
         return self.conn.execute(query, params).fetchdf()
 

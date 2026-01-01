@@ -1,7 +1,18 @@
 openapi: 3.0.0
 info:
   title: B3 Model API
-  description: API for B3 model training, prediction, and evaluation
+  description: |
+    API for B3 asset prediction pipeline supporting both Random Forest and LSTM Multi-Task Learning models.
+    
+    **Supported Models:**
+    - **Random Forest (rf)**: Traditional machine learning model for classification
+    - **LSTM Multi-Task Learning (lstm)**: Deep learning model for both action prediction and return forecasting
+    
+    **LSTM Features:**
+    - Multi-task learning with action classification and return regression
+    - Configurable lookback windows for time series analysis
+    - Pytorch backend for neural network training
+    - Support for price prediction using return forecasts
   version: 1.0.0
 servers:
   - description: Local server
@@ -56,11 +67,69 @@ paths:
               properties:
                 n_jobs:
                   type: integer
+                  description: Number of parallel jobs for training
+                model_type:
+                  type: string
+                  enum: [ rf, random_forest, lstm, lstm_mtl ]
+                  default: rf
+                  description: Type of model to train (Random Forest or LSTM Multi-Task Learning)
+                # LSTM-specific parameters
+                lookback:
+                  type: integer
+                  default: 32
+                  description: Number of time steps to look back for LSTM (only for LSTM models)
+                horizon:
+                  type: integer
+                  default: 1
+                  description: Prediction horizon for LSTM (only for LSTM models)
+                epochs:
+                  type: integer
+                  default: 25
+                  description: Number of training epochs for LSTM (only for LSTM models)
+                batch_size:
+                  type: integer
+                  default: 128
+                  description: Batch size for LSTM training (only for LSTM models)
+                lr:
+                  type: number
+                  format: float
+                  default: 0.001
+                  description: Learning rate for LSTM training (only for LSTM models)
+                units:
+                  type: integer
+                  default: 96
+                  description: Number of LSTM units (only for LSTM models)
+                dropout:
+                  type: number
+                  format: float
+                  default: 0.2
+                  description: Dropout rate for LSTM (only for LSTM models)
+                price_col:
+                  type: string
+                  default: close
+                  description: Price column name for LSTM price prediction (only for LSTM models)
               required:
                 - n_jobs
       responses:
         '200':
           description: Model trained successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Model trained successfully
+                  model_type:
+                    type: string
+                    example: RandomForestClassifier
+                  best_params:
+                    type: object
+                    description: Best hyperparameters found during training
 
   /api/b3/evaluate-model:
     post:
@@ -90,9 +159,9 @@ paths:
         '200':
           description: Model saved successfully
 
-  /api/b3/complete-training:
+  /api/b3/complete-pipeline:
     post:
-      summary: Run the complete training pipeline
+      summary: Run the complete pipeline
       requestBody:
         required: true
         content:
@@ -102,12 +171,56 @@ paths:
               properties:
                 model_dir:
                   type: string
+                  description: Directory to save the trained model
                 n_jobs:
                   type: integer
+                  description: Number of parallel jobs for training
                 test_size:
                   type: number
+                  description: Proportion of data to use for testing
                 val_size:
                   type: number
+                  description: Proportion of data to use for validation
+                model_type:
+                  type: string
+                  enum: [ rf, random_forest, lstm, lstm_mtl ]
+                  default: rf
+                  description: Type of model to train (Random Forest or LSTM Multi-Task Learning)
+                # LSTM-specific parameters
+                lookback:
+                  type: integer
+                  default: 32
+                  description: Number of time steps to look back for LSTM (only for LSTM models)
+                horizon:
+                  type: integer
+                  default: 1
+                  description: Prediction horizon for LSTM (only for LSTM models)
+                epochs:
+                  type: integer
+                  default: 25
+                  description: Number of training epochs for LSTM (only for LSTM models)
+                batch_size:
+                  type: integer
+                  default: 128
+                  description: Batch size for LSTM training (only for LSTM models)
+                lr:
+                  type: number
+                  format: float
+                  default: 0.001
+                  description: Learning rate for LSTM training (only for LSTM models)
+                units:
+                  type: integer
+                  default: 96
+                  description: Number of LSTM units (only for LSTM models)
+                dropout:
+                  type: number
+                  format: float
+                  default: 0.2
+                  description: Dropout rate for LSTM (only for LSTM models)
+                price_col:
+                  type: string
+                  default: close
+                  description: Price column name for LSTM price prediction (only for LSTM models)
               required:
                 - model_dir
                 - n_jobs
@@ -116,20 +229,63 @@ paths:
       responses:
         '200':
           description: Training pipeline completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Complete training pipeline started in background
+                  training_status:
+                    type: string
+                    example: running
+                  model_type:
+                    type: string
+                    example: lstm
 
-  /api/b3/status:
+  /api/b3/pipeline-status:
     get:
       summary: Get current pipeline status
       responses:
         '200':
           description: Pipeline status returned
-
-  /api/b3/training-status:
-    get:
-      summary: Get current training status
-      responses:
-        '200':
-          description: Training status returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  pipeline_state:
+                    type: object
+                    properties:
+                      data_loaded:
+                        type: boolean
+                        description: Whether data has been loaded
+                      data_preprocessed:
+                        type: boolean
+                        description: Whether data has been preprocessed
+                      data_split:
+                        type: boolean
+                        description: Whether data has been split
+                      model_trained:
+                        type: boolean
+                        description: Whether model has been trained
+                      model_type:
+                        type: string
+                        description: Type of model in pipeline (rf, lstm, etc.)
+                        example: lstm
+                      data_shape:
+                        type: array
+                        items:
+                          type: integer
+                        description: Shape of loaded data
+                        example: [ 1000, 20 ]
 
   /api/b3/clear-state:
     post:
@@ -140,7 +296,7 @@ paths:
 
   /api/b3/predict:
     post:
-      summary: Make predictions using the trained model for a specific ticker
+      summary: Make predictions using the trained pipeline for a specific ticker
       requestBody:
         required: true
         content:
@@ -150,8 +306,95 @@ paths:
               properties:
                 ticker:
                   type: string
+                  description: Stock ticker symbol to make predictions for
+                model_type:
+                  type: string
+                  enum: [ rf, random_forest, lstm, lstm_mtl ]
+                  default: rf
+                  description: Type of model to use for prediction (Random Forest or LSTM Multi-Task Learning)
               required:
                 - ticker
       responses:
         '200':
           description: Prediction returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: "Predictions generated successfully for ticker: PETR4"
+                  ticker:
+                    type: string
+                    example: PETR4
+                  predictions:
+                    type: array
+                    items:
+                      type: string
+                    description: Predicted action labels (buy, sell, hold)
+                    example: [ "buy" ]
+                  prediction_probabilities:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        type: number
+                    description: Prediction probabilities for each class (only for Random Forest)
+                  feature_importance:
+                    type: array
+                    items:
+                      type: number
+                    description: Feature importance scores (only for Random Forest)
+                  input_shape:
+                    type: array
+                    items:
+                      type: integer
+                    description: Shape of input data used for prediction
+                    example: [ 1, 15 ]
+                  features_used:
+                    type: array
+                    items:
+                      type: string
+                    description: List of features used for prediction
+                  model_type:
+                    type: string
+                    description: Actual model type used for prediction
+                    example: B3KerasMTLModel
+                  requested_model_type:
+                    type: string
+                    description: Model type requested in the API call
+                    example: lstm
+                  model_source:
+                    type: string
+                    enum: [ pipeline, storage ]
+                    description: Source of the model (from pipeline state or loaded from storage)
+        '400':
+          description: Bad request - missing ticker or model not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  message:
+                    type: string
+                    example: "No trained lstm model found in storage. Please train model first."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  message:
+                    type: string
+                    example: Error making predictions

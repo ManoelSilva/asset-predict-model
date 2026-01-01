@@ -3,13 +3,14 @@ import os
 import uuid
 from datetime import datetime
 
+import numpy as np
 from asset_model_data_storage.data_storage_service import DataStorageService
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, mean_absolute_error, mean_squared_error, r2_score, confusion_matrix
 
 from b3.service.data.db.evaluation.data_loader import EvaluationDataLoader
-from b3.service.model.plotter import B3DashboardPlotter
+from b3.service.pipeline.plotter import B3DashboardPlotter
 
 
 class B3ModelEvaluationService:
@@ -25,11 +26,12 @@ class B3ModelEvaluationService:
             storage_service: Data storage service instance (optional, creates default if not provided)
             evaluation_data_loader: Evaluation data loader instance (optional, creates default if not provided)
         """
-        self.storage_service = storage_service or DataStorageService()
-        self.evaluation_data_loader = evaluation_data_loader or EvaluationDataLoader()
-        self.plotter = B3DashboardPlotter(storage_service)
+        self._storage_service = storage_service or DataStorageService()
+        self._evaluation_data_loader = evaluation_data_loader or EvaluationDataLoader()
+        self._plotter = B3DashboardPlotter(storage_service)
 
-    def _generate_evaluation_id(self, model_name: str, dataset_type: str) -> str:
+    @staticmethod
+    def _generate_evaluation_id(model_name: str, dataset_type: str) -> str:
         """
         Generate a unique evaluation ID.
         
@@ -63,7 +65,21 @@ class B3ModelEvaluationService:
         logging.info(f"Evaluating model on {set_name} set...")
 
         y_pred = model.predict(X)
-        report = classification_report(y, y_pred, target_names=['buy', 'sell', 'hold'], output_dict=True)
+
+        # Calculate Confusion Matrix
+        cm = confusion_matrix(y, y_pred, labels=['buy', 'sell', 'hold'])
+        logging.info(f"Confusion Matrix ({set_name}):\n{cm}")
+
+        report = classification_report(
+            y,
+            y_pred,
+            target_names=['buy', 'sell', 'hold'],
+            output_dict=True,
+            zero_division=0
+        )
+
+        # Add confusion matrix to report (as list for JSON serialization)
+        report['confusion_matrix'] = cm.tolist()
 
         print(f"\n{classification_report(y, y_pred, target_names=['buy', 'sell', 'hold'])}")
         logging.info(f"Model evaluation completed on {set_name} set")
@@ -78,7 +94,7 @@ class B3ModelEvaluationService:
                 evaluation_id = self._generate_evaluation_id(model_name, dataset_type)
 
                 # Save evaluation results
-                success = self.evaluation_data_loader.save_evaluation(
+                success = self._evaluation_data_loader.save_evaluation(
                     evaluation_id=evaluation_id,
                     model_name=model_name,
                     dataset_type=dataset_type,
@@ -110,14 +126,14 @@ class B3ModelEvaluationService:
         logging.info("Generating evaluation visualization...")
 
         # Create directory if using local storage
-        if self.storage_service.is_local_storage():
+        if self._storage_service.is_local_storage():
             os.makedirs(save_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         plot_filename = f"action_samples_by_ticker_{timestamp}.png"
         plot_path = os.path.join(save_dir, plot_filename).replace('\\', '/')
 
-        self.plotter.plot_action_samples_by_ticker(df, save_path=plot_path)
+        self._plotter.plot_action_samples_by_ticker(df, save_path=plot_path)
         logging.info(f"Evaluation visualization saved: {plot_path}")
 
         return plot_path
@@ -144,12 +160,12 @@ class B3ModelEvaluationService:
         # Generate visualization first
         visualization_path = self.generate_evaluation_visualization(df)
 
-        # Evaluate validation set
+        # Evaluate validation set (classification)
         validation_results = self.evaluate_model(
             model, X_val, y_val, "Validation", model_name, persist_results
         )
 
-        # Evaluate test set
+        # Evaluate test set (classification)
         test_results = self.evaluate_model(
             model, X_test, y_test, "Test", model_name, persist_results
         )
@@ -178,32 +194,41 @@ class B3ModelEvaluationService:
             'visualization_path': visualization_path
         }
 
-    def get_evaluation_history(self, model_name: str = None) -> DataFrame:
+    @staticmethod
+    def evaluate_regression(y_true_prices: Series | np.ndarray, y_pred_prices: Series | np.ndarray) -> dict:
         """
-        Retrieve evaluation history from the database.
+        Evaluate regression predictions with MAE, RMSE, and MAPE.
+
+        Args:
+            y_true_prices: Ground-truth prices
+            y_pred_prices: Predicted prices
+
+        Returns:
+            dict: { mae, rmse, mape }
+        """
+        y_true = np.asarray(y_true_prices, dtype=float)
+        y_pred = np.asarray(y_pred_prices, dtype=float)
+        mae = mean_absolute_error(y_true, y_pred)
+        # Compute RMSE without relying on the 'squared' parameter for wider compatibility
+        rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
+        # Avoid divide-by-zero in MAPE
+        eps = 1e-8
+        mape = np.mean(np.abs((y_true - y_pred) / (np.maximum(np.abs(y_true), eps)))) * 100.0
+
+        r2 = r2_score(y_true, y_pred)
+
+        logging.info(f"Regression metrics -> MAE: {mae:.6f}, RMSE: {rmse:.6f}, MAPE: {mape:.4f}%, R2: {r2:.4f}")
+        return {"mae": float(mae), "rmse": float(rmse), "mape": float(mape), "r2": float(r2)}
+
+    def update_evaluation_metrics(self, evaluation_id: str, additional_metrics: dict) -> bool:
+        """
+        Update evaluation metrics in database.
         
         Args:
-            model_name: Optional model name to filter by
+            evaluation_id: ID of the evaluation to update
+            additional_metrics: Dictionary of metrics to add
             
         Returns:
-            DataFrame: Evaluation history data
+            bool: Success status
         """
-        if model_name:
-            return self.evaluation_data_loader.fetch_by_model(model_name)
-        else:
-            return self.evaluation_data_loader.fetch_all()
-
-    def get_evaluation_summary(self) -> DataFrame:
-        """
-        Get summary statistics of all evaluations.
-        
-        Returns:
-            DataFrame: Summary statistics
-        """
-        return self.evaluation_data_loader.get_evaluation_summary()
-
-    def close(self):
-        """Close the evaluation data loader connection."""
-        if hasattr(self, 'evaluation_data_loader') and self.evaluation_data_loader:
-            self.evaluation_data_loader.close()
-            logging.info("Evaluation data loader connection closed")
+        return self._evaluation_data_loader.update_metrics_json(evaluation_id, additional_metrics)
